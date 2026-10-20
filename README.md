@@ -307,6 +307,6 @@ Released under the [MIT License](LICENSE). See `LICENSE` for details.
 **HackersLobby** · Team ID `VTU-QFF-HC-0108` · Tier `Both`
 · Built with ⚛️ Qiskit for the VTU-QFF Hackathon
 
-[⬆ Back to Top](#HackersLobby)
+[⬆ Back to Top](#hackerslobby)
 
 </div>

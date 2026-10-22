@@ -26,7 +26,7 @@ const newAsset = (over = {}) => ({
 });
 
 before(async () => {
-  db = await connectDb({ persist: false });
+  db = await connectDb({ persist: false, allowEnvUri: false }); // tests never touch a real MONGODB_URI
   await seedAssetsIfEmpty();
   server = createApp().listen(0);
   base = `http://127.0.0.1:${server.address().port}/api`;

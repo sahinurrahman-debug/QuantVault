@@ -234,7 +234,7 @@ pytest -q
 
 ### 6. Run the MERN dashboard
 
-Requires [Node.js](https://nodejs.org/) 20+ and the Python environment from step 3 (the API calls it). No MongoDB installation is needed for development: if `MONGODB_URI` is not set, an in-process MongoDB is started (its binary is downloaded on first run, about 800 MB).
+Requires [Node.js](https://nodejs.org/) 20+ and the Python environment from step 3 (the API calls it). No MongoDB installation is needed for development: if `MONGODB_URI` is not set, an in-process MongoDB is started (its binary is downloaded once on first run: a download of roughly 780 MB that leaves about 75 MB cached in `~/.cache/mongodb-binaries`).
 
 ```bash
 cd web

@@ -10,8 +10,8 @@ import { Asset, Experiment } from './models.js';
  *    (persisted under web/server/.data unless `persist` is false).
  * Production requires MONGODB_URI.
  */
-export async function connectDb({ persist = true } = {}) {
-  let uri = config.mongoUri;
+export async function connectDb({ persist = true, allowEnvUri = true } = {}) {
+  let uri = allowEnvUri ? config.mongoUri : "";
   let memory = null;
   if (!uri) {
     if (config.isProd) throw new Error('MONGODB_URI is required when NODE_ENV=production');

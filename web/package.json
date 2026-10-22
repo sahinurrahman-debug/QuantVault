@@ -1,0 +1,16 @@
+{
+  "name": "quantvault-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "QuantVault MERN app: MongoDB + Express (web/server) and React (web/client) in front of the Python engines in src/",
+  "scripts": {
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "dev": "concurrently -n api,web -c blue,green \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start",
+    "test": "npm --prefix server test"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}

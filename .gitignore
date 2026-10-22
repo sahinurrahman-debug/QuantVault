@@ -10,9 +10,17 @@ dist/
 
 # Virtual environments
 .venv/
+.venv*/
 venv/
 env/
 ENV/
+
+# Node / MERN app (web/)
+node_modules/
+web/client/dist/
+web/server/.data/
+npm-debug.log*
+*.log
 
 # Jupyter
 .ipynb_checkpoints/
@@ -31,6 +39,7 @@ htmlcov/
 # Secrets and environment -- NEVER commit these
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 secrets.yaml

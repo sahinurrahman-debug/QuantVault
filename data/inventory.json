@@ -1,0 +1,136 @@
+{
+  "_comment": "ILLUSTRATIVE sample inventory for a hypothetical hospital (not findings from any real system). Algorithm ids are defined in src/algorithms.py. null / \"UNKNOWN\" means the configuration has not been inventoried and is treated conservatively, never as safe.",
+  "organisation": "Hypothetical Regional Hospital",
+  "assets": [
+    {
+      "id": "A01", "name": "Electronic health records (EHR)", "category": "Clinical",
+      "protocol": "TLS 1.2 (ECDHE)",
+      "key_establishment": "ECDHE", "signature": "ECDSA", "symmetric": "AES-256", "hash": "SHA-384",
+      "forward_secrecy": true,
+      "confidentiality_years": 25, "integrity_years": 0, "migration_years": 5,
+      "sensitivity": "restricted", "exposure": "partner", "migration_difficulty": "high",
+      "link_type": "internet",
+      "notes": "Patient records shared with partner clinics; vendor-hosted TLS terminator."
+    },
+    {
+      "id": "A02", "name": "Patient appointment portal", "category": "Patient-facing",
+      "protocol": "TLS 1.3 (X25519MLKEM768)",
+      "key_establishment": "HYBRID-KEM", "signature": "ECDSA", "symmetric": "AES-256", "hash": "SHA-256",
+      "forward_secrecy": true,
+      "confidentiality_years": 3, "integrity_years": 0, "migration_years": 1,
+      "sensitivity": "confidential", "exposure": "internet", "migration_difficulty": "low",
+      "link_type": "internet",
+      "notes": "Hybrid key establishment already enabled; verify it is negotiated in practice."
+    },
+    {
+      "id": "A03", "name": "Internal research archive", "category": "Research",
+      "protocol": "Envelope encryption at rest (RSA-OAEP wrapped keys)",
+      "key_establishment": "RSA-WRAP", "signature": "RSA-SIG", "symmetric": "AES-256", "hash": "SHA-256",
+      "forward_secrecy": false,
+      "confidentiality_years": 20, "integrity_years": 0, "migration_years": 4,
+      "sensitivity": "confidential", "exposure": "internal", "migration_difficulty": "medium",
+      "link_type": "internal",
+      "notes": "Bulk data is AES-256, but the data keys are wrapped with RSA."
+    },
+    {
+      "id": "A04", "name": "Public information website", "category": "Public",
+      "protocol": "TLS 1.3 (X25519)",
+      "key_establishment": "ECDHE", "signature": "RSA-SIG", "symmetric": "AES-128", "hash": "SHA-256",
+      "forward_secrecy": true,
+      "confidentiality_years": 0, "integrity_years": 0, "migration_years": 1,
+      "sensitivity": "public", "exposure": "internet", "migration_difficulty": "low",
+      "link_type": "internet",
+      "notes": "Public content: nothing to keep confidential; certificate lifecycle is the only concern."
+    },
+    {
+      "id": "A05", "name": "Medical-device management network", "category": "Clinical devices",
+      "protocol": "Mixed legacy (TLS 1.0/1.2, vendor protocols)",
+      "key_establishment": "RSA-KT", "signature": "RSA-SIG", "symmetric": "3DES", "hash": "SHA-1",
+      "forward_secrecy": false,
+      "confidentiality_years": 15, "integrity_years": 0, "migration_years": 8,
+      "sensitivity": "restricted", "exposure": "isolated", "migration_difficulty": "very_high",
+      "link_type": "internal",
+      "notes": "Devices cannot be patched quickly; replacement follows capital cycles."
+    },
+    {
+      "id": "A06", "name": "Legacy radiology archive (PACS)", "category": "Clinical",
+      "protocol": "Not documented",
+      "key_establishment": "UNKNOWN", "signature": "UNKNOWN", "symmetric": "UNKNOWN", "hash": "UNKNOWN",
+      "forward_secrecy": null,
+      "confidentiality_years": 30, "integrity_years": 0, "migration_years": 6,
+      "sensitivity": "restricted", "exposure": "internal", "migration_difficulty": "high",
+      "link_type": "internal",
+      "notes": "Vendor documentation missing. Must be inventoried before any decision."
+    },
+    {
+      "id": "A07", "name": "Staff remote-access VPN", "category": "Infrastructure",
+      "protocol": "IPsec IKEv2 (DH group 14)",
+      "key_establishment": "DHE", "signature": "RSA-SIG", "symmetric": "AES-256", "hash": "SHA-256",
+      "forward_secrecy": true,
+      "confidentiality_years": 5, "integrity_years": 0, "migration_years": 3,
+      "sensitivity": "confidential", "exposure": "internet", "migration_difficulty": "medium",
+      "link_type": "internet",
+      "notes": "Carries clinician access to internal systems."
+    },
+    {
+      "id": "A08", "name": "Pathology data-centre interlink", "category": "Infrastructure",
+      "protocol": "Site-to-site IPsec over dedicated dark fibre (~40 km)",
+      "key_establishment": "ECDHE", "signature": "ECDSA", "symmetric": "AES-256", "hash": "SHA-384",
+      "forward_secrecy": true,
+      "confidentiality_years": 25, "integrity_years": 0, "migration_years": 4,
+      "sensitivity": "restricted", "exposure": "isolated", "migration_difficulty": "medium",
+      "link_type": "dedicated_fibre_p2p",
+      "notes": "Fixed point-to-point fibre between two hospital sites: a plausible QKD pilot candidate."
+    },
+    {
+      "id": "A09", "name": "Infusion-pump firmware signing", "category": "Clinical devices",
+      "protocol": "Code signing (RSA-3072)",
+      "key_establishment": null, "signature": "RSA-SIG", "symmetric": null, "hash": "SHA-256",
+      "forward_secrecy": null,
+      "confidentiality_years": 0, "integrity_years": 15, "migration_years": 6,
+      "sensitivity": "confidential", "exposure": "partner", "migration_difficulty": "high",
+      "link_type": "internal",
+      "notes": "Authenticity risk: a forged signature would let malicious firmware be accepted for the device lifetime."
+    },
+    {
+      "id": "A10", "name": "Secure e-mail gateway (S/MIME)", "category": "Communications",
+      "protocol": "S/MIME with RSA key transport",
+      "key_establishment": "RSA-KT", "signature": "RSA-SIG", "symmetric": "AES-128", "hash": "SHA-256",
+      "forward_secrecy": false,
+      "confidentiality_years": 7, "integrity_years": 0, "migration_years": 3,
+      "sensitivity": "confidential", "exposure": "internet", "migration_difficulty": "medium",
+      "link_type": "internet",
+      "notes": "Stored mail is encrypted to long-lived recipient RSA keys."
+    },
+    {
+      "id": "A11", "name": "Billing & payments API", "category": "Finance",
+      "protocol": "TLS 1.3 (X25519)",
+      "key_establishment": "ECDHE", "signature": "ECDSA", "symmetric": "AES-256", "hash": "SHA-256",
+      "forward_secrecy": true,
+      "confidentiality_years": 10, "integrity_years": 0, "migration_years": 2,
+      "sensitivity": "confidential", "exposure": "internet", "migration_difficulty": "medium",
+      "link_type": "internet",
+      "notes": "Third-party payment processor controls part of the TLS stack."
+    },
+    {
+      "id": "A12", "name": "HR system (vendor SaaS)", "category": "Corporate",
+      "protocol": "Vendor-managed",
+      "key_establishment": "UNKNOWN", "signature": "ECDSA", "symmetric": "AES-256", "hash": "SHA-256",
+      "forward_secrecy": null,
+      "confidentiality_years": 7, "integrity_years": 0, "migration_years": 2,
+      "sensitivity": "confidential", "exposure": "internet", "migration_difficulty": "low",
+      "link_type": "internet",
+      "notes": "Vendor has not published its post-quantum roadmap; request it."
+    },
+    {
+      "id": "A13", "name": "Secrets vault (PQC pilot)", "category": "Infrastructure",
+      "protocol": "Internal API (ML-KEM-768 + AES-256-GCM)",
+      "key_establishment": "ML-KEM", "signature": "ML-DSA", "symmetric": "AES-256", "hash": "SHA-384",
+      "forward_secrecy": true,
+      "confidentiality_years": 20, "integrity_years": 0, "migration_years": 1,
+      "sensitivity": "restricted", "exposure": "internal", "migration_difficulty": "low",
+      "link_type": "internal",
+      "notes": "Already uses standardised post-quantum algorithms; keep as the reference implementation."
+    }
+  ]
+}

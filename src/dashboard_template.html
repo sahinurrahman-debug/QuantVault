@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuantVault Dashboard</title>
+<style>
+:root{
+  --bg:#f5f7fb; --card:#ffffff; --ink:#1b2333; --muted:#5b667a; --line:#e3e7ef; --accent:#2b6cb0;
+  --crit:#c53030; --high:#d9822b; --med:#b7950b; --low:#2f855a; --crit-bg:#fdecec; --high-bg:#fdf0e1;
+  --med-bg:#fbf5d9; --low-bg:#e6f5ec; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1420; --card:#171e2e; --ink:#e7ecf6; --muted:#9aa6bd; --line:#27304a; --accent:#6ea8ee;
+    --crit:#f27474; --high:#f0a35a; --med:#e3c34f; --low:#58c48a; --crit-bg:#3a1c22; --high-bg:#3a2a18;
+    --med-bg:#363016; --low-bg:#17352a;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1420; --card:#171e2e; --ink:#e7ecf6; --muted:#9aa6bd; --line:#27304a; --accent:#6ea8ee;
+  --crit:#f27474; --high:#f0a35a; --med:#e3c34f; --low:#58c48a; --crit-bg:#3a1c22; --high-bg:#3a2a18;
+  --med-bg:#363016; --low-bg:#17352a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:20px 16px 0;max-width:1180px;margin:0 auto}
+h1{margin:0;font-size:24px;letter-spacing:-.01em}
+h1 span{color:var(--accent)}
+.sub{color:var(--muted);margin:2px 0 14px}
+main{max-width:1180px;margin:0 auto;padding:0 16px 48px}
+.bar{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0;border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tab{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:7px 14px;border-radius:999px;cursor:pointer;font:inherit}
+.tab[aria-selected=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+.horizon{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:14px}
+.horizon input[type=range]{width:min(320px,100%)}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:3px 10px;border-radius:999px;cursor:pointer;font:inherit;font-size:13px}
+.chip:hover{border-color:var(--accent)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:16px}
+.card h2{margin:0 0 4px;font-size:17px}
+.card p.lead{margin:0 0 12px;color:var(--muted);font-size:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:16px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.kpi b{display:block;font-size:28px;line-height:1.1}
+.kpi span{color:var(--muted);font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+.scroll{overflow-x:auto}
+tr.row{cursor:pointer} tr.row:hover td{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.t-crit{background:var(--crit-bg);color:var(--crit)} .t-high{background:var(--high-bg);color:var(--high)}
+.t-med{background:var(--med-bg);color:var(--med)} .t-low{background:var(--low-bg);color:var(--low)}
+.m-violated{background:var(--crit-bg);color:var(--crit)} .m-ok{background:var(--low-bg);color:var(--low)}
+.m-indeterminate{background:var(--med-bg);color:var(--med)} .m-na{background:var(--line);color:var(--muted)}
+.tierbar{display:flex;height:16px;border-radius:8px;overflow:hidden;margin:8px 0}
+.tierbar div{height:100%}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
+.detail td{background:color-mix(in srgb,var(--accent) 4%,transparent)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.comp{display:grid;grid-template-columns:20px 1fr 40px;gap:6px;align-items:center;font-size:13px;margin:3px 0}
+.comp .track{height:8px;background:var(--line);border-radius:4px;overflow:hidden}
+.comp .fill{height:100%;background:var(--accent)}
+.mono{font-family:var(--mono);font-size:12.5px;white-space:pre;overflow-x:auto}
+.muted{color:var(--muted)} small{color:var(--muted)}
+ul.clean{padding-left:18px;margin:6px 0}
+.phase{display:grid;grid-template-columns:44px 1fr;gap:12px;margin-top:12px}
+.phase .n{width:36px;height:36px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.figs figure{margin:0;background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px}
+.figs img{width:100%;height:auto;display:block}
+.figs figcaption{color:#4a5468;font-size:12px;padding:4px 6px}
+.warn{border-left:4px solid var(--high);background:var(--high-bg);padding:10px 14px;border-radius:6px;font-size:14px}
+select{font:inherit;padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.hide{display:none}
+@media (max-width:640px){ .phase{grid-template-columns:36px 1fr} }
+</style>
+</head>
+<body>
+<header>
+  <h1>Quant<span>Vault</span></h1>
+  <p class="sub">Quantum-Aware Cryptographic Risk &amp; Migration Framework &middot; <span id="org"></span> &middot; sample data, not findings from a real system</p>
+</header>
+<main>
+  <div class="bar">
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <div class="horizon">
+      <label for="z"><b>Assumed quantum-threat horizon Z:</b> <span id="zv"></span> years</label>
+      <input type="range" id="z" min="5" max="40" step="1">
+      <span id="scen"></span>
+      <small>An assumption you control, not a prediction.</small>
+    </div>
+  </div>
+
+  <section id="p-overview"></section>
+  <section id="p-prior" class="hide"></section>
+  <section id="p-qkd" class="hide"></section>
+  <section id="p-migr" class="hide"></section>
+</main>
+
+<script>
+const D = /*__DATA__*/null;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const TIER_CLS = {Critical:"t-crit", High:"t-high", Medium:"t-med", Low:"t-low"};
+const TIER_COL = {Critical:"var(--crit)", High:"var(--high)", Medium:"var(--med)", Low:"var(--low)"};
+const TABS = [["overview","A. Exposure overview"],["prior","B. Risk prioritisation"],["qkd","C. QKD laboratory"],["migr","D. Migration & QKD vs PQC"]];
+const state = {z: D.default, tab: "overview", open: null, model: D.qkd.models[0]};
+
+const dyn = () => D.dyn[String(state.z)];
+function merged(){
+  const d = dyn(), m = {};
+  d.assets.forEach(a => m[a.id] = a);
+  return D.order.map(id => ({...D.assets[id], ...m[id]})).sort((a,b) => a.rank - b.rank);
+}
+function moscaBadge(m){
+  const s = m.status;
+  if (s === "violated") return `<span class="badge m-violated">X+Y&gt;Z by ${Math.round(m.margin)} yr</span>`;
+  if (s === "ok") return `<span class="badge m-ok">OK, slack ${Math.round(-m.margin)} yr</span>`;
+  if (s === "indeterminate") return `<span class="badge m-indeterminate">Indeterminate (unknown crypto)</span>`;
+  return `<span class="badge m-na">Not applicable</span>`;
+}
+const tierBadge = t => `<span class="badge ${TIER_CLS[t]}">${t}</span>`;
+
+/* ---------------------------------------------------------------- header / tabs */
+function renderChrome(){
+  $("#org").textContent = D.organisation;
+  $("#tabs").innerHTML = TABS.map(([k,l]) => `<button class="tab" role="tab" data-k="${k}" aria-selected="${state.tab===k}">${l}</button>`).join("");
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => { state.tab = b.dataset.k; renderAll(); });
+  $("#zv").textContent = state.z;
+  $("#z").value = state.z;
+  $("#scen").innerHTML = Object.entries(D.scenarios).map(([n,z]) => `<button class="chip" data-z="${z}">${n} (${z})</button>`).join(" ");
+  document.querySelectorAll(".chip").forEach(c => c.onclick = () => { state.z = +c.dataset.z; renderAll(); });
+  for (const [k] of TABS) $("#p-"+k).classList.toggle("hide", k !== state.tab);
+}
+
+/* ---------------------------------------------------------------- A. overview */
+function renderOverview(){
+  const o = dyn().overview, total = o.total_assets;
+  const kp = (v,l,c) => `<div class="kpi"><b style="${c?`color:${c}`:""}">${v}</b><span>${l}</span></div>`;
+  const bar = ["Critical","High","Medium","Low"].map(t => `<div style="width:${o.tier_counts[t]/total*100}%;background:${TIER_COL[t]}" title="${t}: ${o.tier_counts[t]}"></div>`).join("");
+  const leg = ["Critical","High","Medium","Low"].map(t => `<span><i style="background:${TIER_COL[t]}"></i>${t}: ${o.tier_counts[t]}</span>`).join("");
+  const unknown = merged().filter(a => a.has_unknown);
+  $("#p-overview").innerHTML = `
+  <div class="kpis">
+    ${kp(total,"assets inventoried")}
+    ${kp(o.quantum_vulnerable,"use quantum-vulnerable mechanisms","var(--high)")}
+    ${kp(o.mosca_violated,"violate Mosca X+Y&gt;Z at Z="+state.z,"var(--crit)")}
+    ${kp(o.urgent_review,"need urgent migration review (Critical/High)","var(--crit)")}
+    ${kp(o.unknown_config,"with unknown cryptographic configuration","var(--med)")}
+    ${kp(o.uses_pq_or_hybrid,"already use PQ / hybrid mechanisms","var(--low)")}
+    ${kp(Math.round(o.inventory_completeness*100)+"%","inventory completeness")}
+  </div>
+  <div class="card"><h2>Priority distribution</h2>
+    <p class="lead">Tier combines the risk score R with the Mosca test. Move the horizon slider to see priorities shift.</p>
+    <div class="tierbar">${bar}</div><div class="legend">${leg}</div></div>
+  <div class="grid2">
+    <div class="card"><h2>Unknown configurations</h2>
+      <p class="lead">Unknown is scored conservatively and is never classified as safe.</p>
+      ${unknown.length ? `<ul class="clean">${unknown.map(a => `<li><b>${esc(a.name)}</b> &mdash; ${esc(a.notes)}</li>`).join("")}</ul>` : "<p>None.</p>"}</div>
+    <div class="card"><h2>Risk score by asset</h2>
+      <p class="lead">R = 100&middot;(0.35C + 0.25Q + 0.20E + 0.20M); weights are configurable.</p>
+      <div class="figs"><figure><img alt="Risk score bar chart" src="data:image/png;base64,${D.qkd.risk_fig}"></figure></div></div>
+  </div>`;
+}
+
+/* ---------------------------------------------------------------- B. prioritisation */
+function compBars(c){
+  const names = {C:"Confidentiality lifetime & sensitivity", Q:"Quantum exposure of mechanisms", E:"External exposure", M:"Migration difficulty & urgency"};
+  return Object.entries(c).map(([k,v]) => `<div class="comp" title="${names[k]}"><b>${k}</b><div class="track"><div class="fill" style="width:${v*100}%"></div></div><span>${v.toFixed(2)}</span></div><small>${names[k]}</small>`).join("");
+}
+function detail(a){
+  const mech = Object.entries(a.mechanisms).filter(([,m]) => m.applicable).map(([r,m]) =>
+    `<tr><td>${r.replace("_"," ")}</td><td>${esc(m.family)}</td><td>${esc(D.qlabels[m.qclass])}</td><td>${esc(m.note)}</td></tr>`).join("");
+  const recs = (a.mosca.status==="violated" ? [{priority:"now", action:"Start migration planning immediately", detail:`Mosca's inequality holds at Z = ${state.z} (X+Y exceeds Z by ${Math.round(a.mosca.margin)} years).`}] : []).concat(a.recs);
+  const mc = a.mosca.confidentiality, ma = a.mosca.authenticity;
+  const mline = (n,m) => m.status==="not_applicable" ? "" : `<div>${n}: X=${m.x}, Y=${m.y}, Z=${m.z} &rarr; X+Y=${m.x+m.y} ${m.margin>0?">":"&le;"} ${m.z} (${m.status})</div>`;
+  return `<tr class="detail"><td colspan="9"><div class="grid2">
+    <div><b>Score components</b>${compBars(a.components)}<p><small>Security exposure (C,Q,E only): <b>${a.security_exposure}</b> &middot; Migration priority R (adds M): <b>${a.risk_score}</b></small></p>
+      <p><b>Mosca</b>${mline("Confidentiality",mc)}${mline("Authenticity",ma)}</p>
+      ${a.tier_reasons.length ? `<p><small>${a.tier_reasons.map(esc).join(" ")}</small></p>` : ""}</div>
+    <div><b>Mechanisms</b><table><tr><th>Role</th><th>Algorithm</th><th>Class</th><th>Why</th></tr>${mech}</table></div>
+  </div>
+  <p><b>Recommended next actions</b></p>
+  <ul class="clean">${recs.map(r => `<li><b>[${r.priority}]</b> ${esc(r.action)} &mdash; <span class="muted">${esc(r.detail)}</span></li>`).join("")}</ul>
+  ${a.qkd_candidate ? `<p class="warn"><b>QKD candidate:</b> ${esc(a.qkd_reason)}</p>` : ""}
+  </td></tr>`;
+}
+function renderPrior(){
+  const rows = merged().map(a => {
+    const mk = a.mechanisms, c = a.mosca;
+    const alg = `${esc(mk.key_establishment.id)} / ${esc(mk.signature.id)} / ${esc(mk.symmetric.id)}`;
+    const x = Math.max(a.inputs.confidentiality_years, a.inputs.integrity_years);
+    return `<tr class="row" data-id="${a.id}"><td>${a.rank}</td><td><b>${esc(a.name)}</b><br><small>${esc(a.protocol)}</small></td>
+      <td><small>${alg}</small></td><td>${x}</td><td>${a.inputs.migration_years}</td><td>${moscaBadge(c)}</td>
+      <td><b>${a.risk_score}</b></td><td>${a.security_exposure}</td><td>${tierBadge(a.tier)}</td></tr>${state.open===a.id ? detail(a) : ""}`;
+  }).join("");
+  $("#p-prior").innerHTML = `<div class="card"><h2>Risk prioritisation at Z = ${state.z} years</h2>
+    <p class="lead">Click a row for the component scores, mechanisms and recommended actions. Algorithms are shown as key establishment / signature / symmetric. X is the confidentiality (or signature-trust) lifetime and Y the migration time, both in years. Mosca's inequality is a prioritisation heuristic, not a probability of compromise.</p>
+    <div class="scroll"><table><thead><tr><th>#</th><th>Asset</th><th>KE / Sig / Sym</th><th>X</th><th>Y</th><th>Mosca (Z=${state.z})</th><th>R</th><th>Exposure</th><th>Tier</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  document.querySelectorAll("#p-prior tr.row").forEach(r => r.onclick = () => { state.open = state.open === r.dataset.id ? null : r.dataset.id; renderPrior(); });
+}
+
+/* ---------------------------------------------------------------- C. QKD lab */
+const pct = v => (v*100).toFixed(1)+"%";
+function seqRows(d){
+  const s = (arr) => arr.join("");
+  const lines = [
+    ["Alice bits ", s(d.alice_bits)], ["Alice basis", s(d.alice_bases.map(b => b ? "X":"Z"))],
+  ];
+  if (d.eve_bases.some(b => b >= 0)) lines.push(["Eve basis  ", s(d.eve_bases.map(b => b<0 ? "-" : (b ? "X":"Z")))]);
+  lines.push(["Bob basis  ", s(d.bob_bases.map(b => b ? "X":"Z"))], ["Bob bits   ", s(d.bob_bits)],
+    ["Sifted?    ", s(d.sift.map(m => m ? "^" : " "))], ["Error?     ", s(d.err.map((e,i) => d.sift[i] ? (e ? "!" : ".") : " "))]);
+  return lines.map(([k,v]) => `${k} ${v}`).join("\n");
+}
+function demoCard(d){
+  const s = d.summary;
+  return `<div class="card"><h2>${esc(d.label)}</h2>
+    <p class="lead">First ${d.alice_bits.length} of ${s.n_sent} transmitted qubits. <code>^</code> = bases matched (kept), <code>!</code> = error in the sifted key.</p>
+    <div class="mono">${esc(seqRows(d))}</div>
+    <div class="scroll"><table><tbody>
+      <tr><td>Qubits sent</td><td>${s.n_sent}</td><td>Sifted key</td><td>${s.n_sifted}</td></tr>
+      <tr><td>Compared (sample)</td><td>${s.n_sample} (${s.sample_errors} errors)</td><td>QBER (sample)</td><td><b>${pct(s.qber_sample)}</b> <small>true ${pct(s.qber_true)}</small></td></tr>
+      <tr><td>QBER upper bound</td><td>${pct(s.qber_upper)}</td><td>Reconciliation leak</td><td>${s.leak_ec} + ${s.leak_verify} bits</td></tr>
+      <tr><td>Residual errors</td><td>${s.residual_errors}</td><td>Final key</td><td><b>${s.final_length} bits</b> ${s.accepted ? '<span class="badge m-ok">accepted</span>' : '<span class="badge m-violated">aborted</span>'}</td></tr>
+    </tbody></table></div>
+    ${s.accepted ? "" : `<p class="warn">${esc(s.abort_reason)}</p>`}
+    ${s.accepted ? `<p><small>Accepted means the simplified checks passed. It does not prove that no eavesdropper exists or that the key is formally secure.</small></p>` : ""}</div>`;
+}
+function renderQKD(){
+  const rows = D.qkd.grid.filter(r => r.model === state.model).map(r =>
+    `<tr><td><b>${r.experiment}</b></td><td>${r.eve ? "on":"off"}</td><td>${r.noise_p}</td><td>${r.runs}</td><td>${Math.round(r.compared_mean)}</td>
+     <td>${pct(r.qber_mean)} <small>&plusmn;${(r.qber_std*100).toFixed(1)}</small></td><td>${Math.round(r.final_len_mean)}</td><td>${Math.round(r.accept_rate*100)}%</td></tr>`).join("");
+  const figs = D.qkd.figure_order.map(([k,c]) => `<figure><img alt="${esc(c)}" src="data:image/png;base64,${D.qkd.figures[k]}"><figcaption>${esc(c)}</figcaption></figure>`).join("");
+  $("#p-qkd").innerHTML = `
+  <div class="card"><h2>Qiskit BB84 simulation</h2>
+    <p class="lead">Alice prepares states, Eve optionally intercepts and resends, Bob measures. Every number below comes from circuits executed on Qiskit Aer. The lab is pre-computed; re-run it with <code>python -m src.main qkd</code> to change qubits, noise or Eve.</p>
+  </div>
+  ${D.qkd.demos.map(demoCard).join("")}
+  <div class="card"><h2>Experiments A&ndash;D</h2>
+    <p class="lead">A: no Eve, no noise &middot; B: Eve, no noise (expect ~25%) &middot; C: noise only &middot; D: Eve and noise. Values are means over repeated runs of ${D.qkd.n_qubits} qubits; they fluctuate around expectations.</p>
+    <p>Noise model: <select id="model">${D.qkd.models.map(m => `<option value="${m}" ${m===state.model?"selected":""}>${esc(D.qkd.model_labels[m])}</option>`).join("")}</select></p>
+    <div class="scroll"><table><thead><tr><th>Exp.</th><th>Eve</th><th>Noise p</th><th>Runs</th><th>Compared bits</th><th>QBER (sifted)</th><th>Final key (bits)</th><th>Completed</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p><small>${esc(D.qkd.noise_note)}</small></p></div>
+  <div class="card"><h2>Figures</h2><div class="figs">${figs}</div></div>
+  <div class="card"><h2>Model limitations</h2><ul class="clean">${D.limitations.map(l => `<li>${esc(l)}</li>`).join("")}</ul></div>`;
+  $("#model").onchange = e => { state.model = e.target.value; renderQKD(); };
+}
+
+/* ---------------------------------------------------------------- D. migration */
+function renderMigr(){
+  const plan = dyn().plan;
+  const phases = plan.map(p => `<div class="phase"><div class="n">${p.phase}</div><div><b>${esc(p.name)}</b><br><span class="muted">${esc(p.summary)}</span>
+    <ul class="clean">${p.items.map(i => `<li>${i.asset ? `<b>${esc(i.asset.name)}</b> ${tierBadge(i.asset.tier)} &mdash; ` : ""}${esc(i.task)}</li>`).join("")}</ul></div></div>`).join("");
+  const cmp = D.comparison.map(r => `<tr><td><b>${esc(r[0])}</b></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td></tr>`).join("");
+  const wf = l => `<ol class="clean">${l.map(s => `<li>${esc(s)}</li>`).join("")}</ol>`;
+  const qkd = merged().filter(a => a.qkd_candidate);
+  $("#p-migr").innerHTML = `
+  <div class="card"><h2>Migration roadmap at Z = ${state.z} years</h2>
+    <p class="lead">Generated from the inventory and the assumptions above, not from a single aggregate score.</p>${phases}</div>
+  <div class="card"><h2>Where QKD fits</h2>
+    <ol class="clean">${D.priorities.map(p => `<li><b>${esc(p[0])}:</b> ${esc(p[1])}</li>`).join("")}</ol>
+    ${qkd.length ? qkd.map(a => `<p class="warn"><b>${esc(a.name)}:</b> ${esc(a.qkd_reason)}</p>`).join("") : "<p>No asset in this inventory is a QKD candidate.</p>"}</div>
+  <div class="card"><h2>QKD vs post-quantum cryptography</h2><div class="scroll"><table><thead><tr><th></th><th>Quantum key distribution</th><th>Post-quantum cryptography</th></tr></thead><tbody>${cmp}</tbody></table></div></div>
+  <div class="grid2"><div class="card"><h2>PQC workflow</h2>${wf(D.workflow_pqc)}</div><div class="card"><h2>QKD workflow</h2>${wf(D.workflow_qkd)}</div></div>`;
+}
+
+let qkdDrawn = false;
+function renderAll(){
+  renderChrome(); renderOverview(); renderPrior(); renderMigr();
+  if (!qkdDrawn) { renderQKD(); qkdDrawn = true; }  // QKD results do not depend on Z
+}
+$("#z").addEventListener("input", e => { state.z = +e.target.value; renderAll(); });
+renderAll();
+</script>
+</body>
+</html>

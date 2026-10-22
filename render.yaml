@@ -1,0 +1,22 @@
+# Render Blueprint for QuantVault (Express API + React client + Python engines in one Docker service).
+# Database: MongoDB Atlas (set MONGODB_URI when Render prompts for it; it is never stored in git).
+services:
+  - type: web
+    name: quantvault
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: MONGODB_URI
+        sync: false            # prompted at Blueprint creation; paste your Atlas connection string
+      - key: NODE_ENV
+        value: production
+      - key: PYTHON_CONCURRENCY
+        value: "1"             # one Python process at a time (free instances have ~512 MB RAM)
+      - key: SKIP_EXPERIMENT_SEED
+        value: "1"             # skip the first-start experiment batch; use "Re-run experiments" in the QKD lab

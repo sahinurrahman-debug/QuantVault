@@ -29,6 +29,7 @@ export default function Login() {
       await login(e, p);
     } catch (err) {
       setError(err.message);
+    } finally {
       setBusy(false);
     }
   }

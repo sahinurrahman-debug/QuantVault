@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAuth } from '../auth/AuthContext.jsx';
 import { SITE } from '../site.js';
 import { IconGithub, IconLinkedin, IconX, IconYoutube } from './Icons.jsx';
 import { Link, SectionLink } from '../router.jsx';
@@ -20,6 +21,7 @@ const linkCls = 'text-slate-300 transition-colors duration-500 hover:text-white'
 const Ext = ({ href, children }) => <li><a className={linkCls} href={href} target="_blank" rel="noreferrer noopener">{children}</a></li>;
 
 export default function Footer() {
+  const { user } = useAuth();
   const socials = Object.entries(SITE.socials).filter(([, url]) => url);
 
   return (
@@ -48,7 +50,7 @@ export default function Footer() {
             <li><SectionLink id="features" className={linkCls}>Features</SectionLink></li>
             <li><Link to="/dashboard" className={linkCls}>Dashboard</Link></li>
             <li><SectionLink id="usecases" className={linkCls}>Use Cases</SectionLink></li>
-            <li><Link to="/signup" className={linkCls}>Get Started</Link></li>
+            <li>{user ? <Link to="/account" className={linkCls}>Account</Link> : <Link to="/signup" className={linkCls}>Get Started</Link>}</li>
           </Column>
 
           <Column title="Resources">

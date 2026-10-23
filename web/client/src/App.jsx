@@ -1,15 +1,20 @@
-import React, { useEffect } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { AuthProvider, useAuth } from './auth/AuthContext.jsx';
 import Background from './components/Background.jsx';
+import { ConfirmProvider } from './components/ConfirmDialog.jsx';
 import Footer from './components/Footer.jsx';
 import Navbar from './components/Navbar.jsx';
 import { DashboardSkeleton } from './components/ui.jsx';
-import Dashboard from './pages/Dashboard.jsx';
+import { tabForPath } from './pages/dashboardTabs.js';
 import Landing from './pages/Landing.jsx';
 import Login from './pages/Login.jsx';
 import NotFound from './pages/NotFound.jsx';
 import Signup from './pages/Signup.jsx';
 import { RouterProvider, safeNext, useRouter } from './router.jsx';
+
+// The dashboard pulls in the charting library, so it is a separate download: the landing page stays small.
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const Account = lazy(() => import('./pages/Account.jsx'));
 
 const PageSkeleton = () => <div className="wrap pt-12"><DashboardSkeleton /></div>;
 
@@ -20,7 +25,7 @@ function RequireAuth({ children }) {
   useEffect(() => {
     if (ready && !user) navigate(`/login?next=${encodeURIComponent(path + search)}`, { replace: true });
   }, [ready, user, path, search, navigate]);
-  return ready && user ? children : <PageSkeleton />;
+  return ready && user ? <Suspense fallback={<PageSkeleton />}>{children}</Suspense> : <PageSkeleton />;
 }
 
 /** Sign-in and sign-up pages are for signed-out visitors; signed-in users are sent on to their destination. */
@@ -35,13 +40,13 @@ function GuestOnly({ children }) {
 
 function CurrentPage() {
   const { path } = useRouter();
-  switch (path) {
-    case '/': return <Landing />;
-    case '/login': return <GuestOnly><Login /></GuestOnly>;
-    case '/signup': return <GuestOnly><Signup /></GuestOnly>;
-    case '/dashboard': return <RequireAuth><Dashboard /></RequireAuth>;
-    default: return <NotFound />;
-  }
+  if (path === '/') return <Landing />;
+  if (path === '/login') return <GuestOnly><Login /></GuestOnly>;
+  if (path === '/signup') return <GuestOnly><Signup /></GuestOnly>;
+  if (path === '/account') return <RequireAuth><Account /></RequireAuth>;
+  const tab = tabForPath(path); // /dashboard and /dashboard/risk, /qkd, ... share one Dashboard, so its state survives tab changes
+  if (tab) return <RequireAuth><Dashboard tab={tab.key} /></RequireAuth>;
+  return <NotFound />;
 }
 
 function Shell() {
@@ -59,9 +64,10 @@ function Shell() {
 
   return (
     <>
+      <a href="#main" className="skip-link" onClick={(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to Content</a>
       <Background />
       <Navbar />
-      <main><CurrentPage /></main>
+      <main id="main" tabIndex={-1}><CurrentPage /></main>
       <Footer />
     </>
   );
@@ -71,7 +77,9 @@ export default function App() {
   return (
     <RouterProvider>
       <AuthProvider>
-        <Shell />
+        <ConfirmProvider>
+          <Shell />
+        </ConfirmProvider>
       </AuthProvider>
     </RouterProvider>
   );

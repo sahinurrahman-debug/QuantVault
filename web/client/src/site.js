@@ -17,10 +17,10 @@ export const SITE = {
   },
 };
 
-// Real project numbers (kept in sync with the test suites and the sample inventory).
+// Real project numbers. None of them is a test count, so they cannot drift as tests are added.
 export const STATS = [
   { value: '13', label: 'Sample Assets Scored' },
   { value: '≈25%', label: 'QBER Exposes an Intercept-Resend Eve' },
   { value: '36', label: 'Threat Horizons Explored (5–40 Years)' },
-  { value: '103', label: 'Automated Tests (52 Python + 51 API)' },
+  { value: '5', label: 'Phases in the Generated Migration Roadmap' },
 ];

@@ -24,6 +24,8 @@ Key points encoded below (and why):
 * ML-KEM (FIPS 203) is a key-encapsulation mechanism; ML-DSA (FIPS 204) and
   SLH-DSA (FIPS 205) are signatures. They are never interchangeable.
 * ``UNKNOWN`` is never treated as safe.
+* ``legacy_weak`` mechanisms (3DES, SHA-1) are *classically* broken or deprecated. Their ``q`` is the small quantum
+  term only; the classical weakness is reported separately (``weak=True``) and raises the priority tier on its own.
 """
 
 from __future__ import annotations
@@ -111,8 +113,8 @@ ALGORITHMS: dict[str, dict] = {
         note="Larger margin against generic quantum search."),
     "3DES": dict(
         role=SYMMETRIC, family="3DES",
-        qclass="legacy_weak", q=0.70,
-        note="Deprecated: 64-bit blocks (Sweet32) and small effective key. Weak classically as well."),
+        qclass="legacy_weak", q=0.25, weak=True,
+        note="Deprecated: 64-bit blocks (Sweet32) and a small effective key. This is a classical weakness, scored separately from quantum exposure."),
     # ------------------------------------------------------------ hashes
     "SHA-256": dict(
         role=HASH, family="SHA-256",
@@ -124,8 +126,8 @@ ALGORITHMS: dict[str, dict] = {
         note="Larger output; ample margin."),
     "SHA-1": dict(
         role=HASH, family="SHA-1",
-        qclass="legacy_weak", q=0.60,
-        note="Deprecated: practical collisions exist classically."),
+        qclass="legacy_weak", q=0.25, weak=True,
+        note="Deprecated: practical collisions exist classically. This is a classical weakness, scored separately from quantum exposure."),
 }
 
 # Conservative stand-in used when a role is present but not identified.

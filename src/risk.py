@@ -71,6 +71,36 @@ def load_inventory(path: str | Path | None = None) -> dict:
         return json.load(fh)
 
 
+def _choice(asset: dict, key: str, table: dict) -> float:
+    """Look up an enumerated field, rejecting unknown values with a clear message."""
+    value = asset.get(key)
+    if value not in table:
+        raise ValueError(f"asset {asset.get('id', '?')}: {key} must be one of {', '.join(table)} (got {value!r})")
+    return table[value]
+
+
+def _number(asset: dict, key: str, default: float | None = None) -> float:
+    value = asset.get(key, default)
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"asset {asset.get('id', '?')}: {key} must be a number (got {value!r})") from None
+    if number != number or number < 0:
+        raise ValueError(f"asset {asset.get('id', '?')}: {key} must be zero or more (got {value!r})")
+    return number
+
+
+# Key-establishment ids that normally give forward secrecy, and ids that cannot.
+EPHEMERAL_KE = {"ECDHE", "DHE"}
+STATIC_KE = {"RSA-KT", "RSA-WRAP", "DH-STATIC", "ECDH-STATIC"}
+
+
+def _tier_bounds(tier: str, cfg: "RiskConfig") -> tuple[float, float]:
+    """Score range that belongs to each tier, so the displayed score never contradicts the tier."""
+    return {"Low": (0.0, cfg.tier_medium - 0.1), "Medium": (cfg.tier_medium, cfg.tier_high - 0.1),
+            "High": (cfg.tier_high, cfg.tier_critical - 0.1), "Critical": (cfg.tier_critical, 100.0)}[tier]
+
+
 def _mechanism(asset: dict, role: str) -> dict:
     """Look up one role; ``None`` means the role does not apply to the asset."""
     value = asset.get(role)
@@ -108,9 +138,21 @@ def analyse_asset(asset: dict, cfg: RiskConfig | None = None) -> dict:
     sym = _mechanism(asset, SYMMETRIC)
     hsh = _mechanism(asset, HASH)
 
-    x_conf = float(asset.get("confidentiality_years", 0))
-    x_int = float(asset.get("integrity_years", 0))
-    y = float(asset["migration_years"])
+    # The forward-secrecy flag is used, not just stored: it corrects or flags the algorithm-based score.
+    warnings: list[str] = []
+    fs = asset.get("forward_secrecy")
+    if ke["applicable"] and ke["qclass"] == "shor_vulnerable":
+        if fs is False and ke["id"] in EPHEMERAL_KE:
+            ke = {**ke, "q": max(ke["q"], 1.0)}
+            warnings.append(f"Forward secrecy is marked No, but {ke['id']} normally provides it. Scored like a static key exchange.")
+        elif fs is True and ke["id"] in STATIC_KE:
+            warnings.append(f"Forward secrecy is marked Yes, but {ke['id']} cannot provide it. Check the inventory entry.")
+    legacy = [{"role": m["role"], "id": m["id"], "family": m["family"]}
+              for m in (ke, sig, sym, hsh) if m["applicable"] and m["qclass"] == "legacy_weak"]
+
+    x_conf = _number(asset, "confidentiality_years", default=0.0)
+    x_int = _number(asset, "integrity_years", default=0.0)
+    y = _number(asset, "migration_years")
 
     # ---- Mosca: confidentiality (HNDL, key establishment) and authenticity (signatures)
     mosca_conf = _mosca(x_conf, y, z, _is_vulnerable_or_unknown(ke))
@@ -134,10 +176,10 @@ def analyse_asset(asset: dict, cfg: RiskConfig | None = None) -> dict:
     if x_int > 0:
         q_parts.append(sig["q"])
     Q = max(q_parts)
-    sens = SENSITIVITY[asset["sensitivity"]]
+    sens = _choice(asset, "sensitivity", SENSITIVITY)
     C = 0.7 * min(x_eff / cfg.x_max_years, 1.0) + 0.3 * sens
-    E = EXPOSURE[asset["exposure"]]
-    M = 0.5 * DIFFICULTY[asset["migration_difficulty"]] + 0.5 * min(y / cfg.y_max_years, 1.0)
+    E = _choice(asset, "exposure", EXPOSURE)
+    M = 0.5 * _choice(asset, "migration_difficulty", DIFFICULTY) + 0.5 * min(y / cfg.y_max_years, 1.0)
 
     w = cfg.weights
     R = 100 * (w["C"] * C + w["Q"] * Q + w["E"] * E + w["M"] * M)
@@ -150,7 +192,7 @@ def analyse_asset(asset: dict, cfg: RiskConfig | None = None) -> dict:
     if x_eff <= 0:
         tier = "Low"
         reasons.append("No confidentiality or integrity lifetime requirement.")
-    elif Q < cfg.low_q_cap and not has_unknown:
+    elif Q < cfg.low_q_cap and not has_unknown and not legacy:
         tier = "Low"
         reasons.append("Mechanisms are post-quantum, hybrid or have an adequate margin: monitor.")
     else:
@@ -160,6 +202,15 @@ def analyse_asset(asset: dict, cfg: RiskConfig | None = None) -> dict:
         if has_unknown and TIERS.index(tier) < TIERS.index("Medium"):
             tier = "Medium"
             reasons.append("Raised to Medium because part of the configuration is unknown.")
+        if legacy and TIERS.index(tier) < TIERS.index("Medium"):
+            tier = "Medium"
+            names = ", ".join(m["id"] for m in legacy)
+            reasons.append(f"Raised to Medium because classically weak algorithms are in use ({names}).")
+
+    # The displayed score always agrees with the tier: rules can lift or cap an asset, so the score is moved into the
+    # tier's range. The raw weighted score is kept alongside.
+    lo, hi = _tier_bounds(tier, cfg)
+    R_shown = min(max(R, lo), hi)
 
     qkd_candidate, qkd_reason = _qkd_candidate(asset, x_eff, ke, sig)
 
@@ -174,11 +225,15 @@ def analyse_asset(asset: dict, cfg: RiskConfig | None = None) -> dict:
             "migration_difficulty": asset["migration_difficulty"],
         },
         "components": {"C": round(C, 3), "Q": round(Q, 3), "E": round(E, 3), "M": round(M, 3)},
-        "risk_score": round(R, 1),
+        "risk_score": round(R_shown, 1), "risk_score_raw": round(R, 1), "score_adjusted": abs(R_shown - R) > 0.05,
         "security_exposure": round(exposure_score, 1),
+        "classical_weakness": legacy, "data_warnings": warnings,
         "tier": tier, "tier_reasons": reasons,
         "mosca": {"status": mosca_status, "margin": mosca_margin,
-                  "confidentiality": mosca_conf, "authenticity": mosca_auth},
+                  "confidentiality": mosca_conf, "authenticity": mosca_auth,
+                  # unknown crypto whose window would be violated if it turns out to be vulnerable
+                  "possible_violation": mosca_status == "indeterminate"
+                  and any(m.get("violated_if_vulnerable") for m in (mosca_conf, mosca_auth))},
         "has_unknown": has_unknown,
         "qkd_candidate": qkd_candidate, "qkd_reason": qkd_reason,
         "quantum_vulnerable": any(_is_vulnerable_or_unknown(m) == "vulnerable"
@@ -305,6 +360,7 @@ def overview(results: list[dict]) -> dict:
         "total_assets": total,
         "quantum_vulnerable": sum(r["quantum_vulnerable"] for r in results),
         "mosca_violated": sum(r["mosca"]["status"] == "violated" for r in results),
+        "mosca_possible": sum(bool(r["mosca"].get("possible_violation")) for r in results),
         "urgent_review": sum(r["tier"] in ("Critical", "High") for r in results),
         "unknown_config": sum(r["has_unknown"] for r in results),
         "uses_pq_or_hybrid": sum(r["uses_pq"] for r in results),

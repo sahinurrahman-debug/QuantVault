@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import compression from 'compression';
 import express from 'express';
 import mongoose from 'mongoose';
 import { authRouter, loadSession, originCheck, requireAuth } from './auth.js';
 import { config } from './config.js';
-import { resetAssets } from './db.js';
+import { resetAssets, trimOwned } from './db.js';
 import { ah, HttpError, makeLimiter } from './http.js';
 import {
   Asset, Experiment, QkdRun, Subscriber, publicDoc, toPlainAsset,
@@ -15,11 +16,21 @@ import {
 } from './validate.js';
 
 const subscribeLimiter = makeLimiter({ max: 10, windowMs: 3_600_000 });
-function limitSubscribe(req, _res, next) {
-  const key = req.ip || 'unknown';
-  if (subscribeLimiter.blocked(key)) return next(new HttpError(429, 'Too many attempts. Please try again later.'));
-  subscribeLimiter.hit(key);
-  return next();
+function limitByIp(limiter) {
+  return (req, _res, next) => {
+    const key = req.ip || 'unknown';
+    if (limiter.blocked(key)) return next(new HttpError(429, 'Too many attempts. Please try again later.'));
+    limiter.hit(key);
+    return next();
+  };
+}
+/** Budget per signed-in user, so one account (or the public demo) cannot use up the server. */
+function limitByUser(limiter, what) {
+  return (req, _res, next) => {
+    if (limiter.blocked(req.user.id)) return next(new HttpError(429, `You have reached the hourly limit for ${what}. Please try again later.`));
+    limiter.hit(req.user.id);
+    return next();
+  };
 }
 
 // Every data query below is scoped by `owner = req.user.id`; there is no code path that reads without it.
@@ -28,20 +39,35 @@ async function currentAssets(owner) {
   return docs.map(toPlainAsset);
 }
 
-/** Run an experiment batch in the background and record the outcome. */
-async function runExperimentJob(id, params) {
+/** Record a batch's outcome. A database hiccup here must never become an unhandled rejection (it would kill the server). */
+async function finishExperiment(id, update) {
   try {
-    const result = await callPython({ cmd: 'experiments', ...params }, 15 * 60_000);
-    await Experiment.findByIdAndUpdate(id, { status: 'done', result, finishedAt: new Date() });
+    await Experiment.findByIdAndUpdate(id, update);
   } catch (e) {
-    await Experiment.findByIdAndUpdate(id, { status: 'failed', error: e.message, finishedAt: new Date() });
+    console.error(`[experiments] could not record the outcome of batch ${id}: ${e.message}`);
+  }
+}
+
+/** Run an experiment batch in the background and record the outcome. Never throws. */
+async function runExperimentJob(id, owner, params) {
+  try {
+    const result = await callPython({ cmd: 'experiments', ...params }, { timeoutMs: 15 * 60_000, userId: String(owner) });
+    await finishExperiment(id, { status: 'done', result, finishedAt: new Date() });
+  } catch (e) {
+    console.error(`[experiments] batch ${id} failed: ${e.message}`);
+    await finishExperiment(id, { status: 'failed', error: e.expose ? e.message : 'The experiment batch failed on the server.', finishedAt: new Date() });
+  }
+  try {
+    await trimOwned(Experiment, owner, config.limits.keepExperiments, { status: { $ne: 'running' } });
+  } catch (e) {
+    console.error(`[experiments] retention cleanup failed: ${e.message}`);
   }
 }
 
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
   + "font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
-export function createApp() {
+export function createApp({ clientDist = config.clientDist, limits = config.limits } = {}) {
   const app = express();
   app.disable('x-powered-by');
   if (config.isProd) app.set('trust proxy', 1); // behind Render's proxy: correct client IP and req.secure
@@ -55,19 +81,39 @@ export function createApp() {
     if (config.isProd) res.set('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
     next();
   });
+  app.use(compression());
+
+  // One line per API call: method, path (no query string, no body), status, time, short user id.
+  app.use((req, res, next) => {
+    if (!req.path.startsWith('/api/') || req.path === '/api/health') return next();
+    const started = Date.now();
+    res.on('finish', () => {
+      const line = { m: req.method, p: req.path, s: res.statusCode, ms: Date.now() - started, u: req.user ? req.user.id.slice(-6) : '-' };
+      console.log(config.isProd ? `[http] ${JSON.stringify(line)}` : `[http] ${line.m} ${line.p} ${line.s} ${line.ms}ms user=${line.u}`);
+    });
+    return next();
+  });
   app.use(express.json({ limit: '100kb' }));
+
+  const riskLimiter = makeLimiter({ max: limits.riskPer15Min, windowMs: 15 * 60_000 });
+  const qkdLimiter = makeLimiter({ max: limits.qkdPerHour, windowMs: 3_600_000 });
+  const experimentLimiter = makeLimiter({ max: limits.experimentsPerHour, windowMs: 3_600_000 });
 
   const api = express.Router();
   api.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   api.use(originCheck);
+
+  // Registered BEFORE the session loader: a health check must answer even when the database is down and must
+  // never wait on it. 503 tells the platform to restart a broken instance.
+  api.get('/health', (_req, res) => {
+    const ok = mongoose.connection.readyState === 1;
+    res.status(ok ? 200 : 503).json({ ok, db: ok ? 'connected' : 'disconnected' });
+  });
+
   api.use(loadSession);
 
   // ------------------------------------------------------------------ public routes
-  api.get('/health', ah(async (_req, res) => {
-    res.json({ ok: true, db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' });
-  }));
-
-  api.post('/subscribe', limitSubscribe, ah(async (req, res) => {
+  api.post('/subscribe', limitByIp(subscribeLimiter), ah(async (req, res) => {
     const { value: email, errors } = validateEmail(req.body);
     if (errors.length) throw new HttpError(422, errors[0]);
     const existing = await Subscriber.findOne({ email }).lean();
@@ -81,7 +127,15 @@ export function createApp() {
     return res.status(201).json({ ok: true, already: false });
   }));
 
-  api.use('/auth', authRouter());
+  // Anyone can remove an address from the pilot list (it only ever deletes a stored email).
+  api.post('/subscribe/remove', limitByIp(subscribeLimiter), ah(async (req, res) => {
+    const { value: email, errors } = validateEmail(req.body);
+    if (errors.length) throw new HttpError(422, errors[0]);
+    const { deletedCount } = await Subscriber.deleteOne({ email });
+    res.json({ ok: true, removed: deletedCount > 0 });
+  }));
+
+  api.use('/auth', authRouter(limits));
 
   // ------------------------------------------------------------------ everything below requires a session
   api.use(requireAuth);
@@ -96,8 +150,13 @@ export function createApp() {
     const { value, errors } = validateAsset(req.body, await getMeta());
     if (errors.length) throw new HttpError(422, 'Invalid asset', errors);
     if (await Asset.countDocuments({ owner }) >= config.maxAssets) throw new HttpError(409, `Inventory is limited to ${config.maxAssets} assets`);
-    if (await Asset.exists({ owner, id: value.id })) throw new HttpError(409, `Asset ${value.id} already exists`);
-    res.status(201).json(toPlainAsset(await Asset.create({ ...value, owner })));
+    try {
+      res.status(201).json(toPlainAsset(await Asset.create({ ...value, owner })));
+    } catch (e) {
+      // The unique (owner, id) index is the real guard; two simultaneous requests cannot both pass a check-then-insert.
+      if (e.code === 11000) throw new HttpError(409, `Asset ${value.id} already exists`);
+      throw e;
+    }
   }));
 
   api.put('/assets/:id', ah(async (req, res) => {
@@ -120,26 +179,27 @@ export function createApp() {
   }));
 
   // ---- risk
-  api.get('/risk', ah(async (req, res) => {
+  api.get('/risk', limitByUser(riskLimiter, 'risk assessments'), ah(async (req, res) => {
     const { value: horizon, errors } = validateHorizon(req.query.horizon);
     if (errors.length) throw new HttpError(422, errors[0]);
     const assets = await currentAssets(req.user.id);
     if (!assets.length) throw new HttpError(409, 'The inventory is empty; add an asset or reset to the sample inventory');
-    res.json(await callPython({ cmd: 'risk', assets, horizon }));
+    res.json(await callPython({ cmd: 'risk', assets, horizon }, { userId: req.user.id }));
   }));
 
-  api.get('/risk/sweep', ah(async (req, res) => {
+  api.get('/risk/sweep', limitByUser(riskLimiter, 'risk assessments'), ah(async (req, res) => {
     const assets = await currentAssets(req.user.id);
     if (!assets.length) throw new HttpError(409, 'The inventory is empty');
-    res.json(await callPython({ cmd: 'sweep', assets }));
+    res.json(await callPython({ cmd: 'sweep', assets }, { userId: req.user.id }));
   }));
 
   // ---- QKD
-  api.post('/qkd/run', ah(async (req, res) => {
+  api.post('/qkd/run', limitByUser(qkdLimiter, 'QKD simulations'), ah(async (req, res) => {
     const { value, errors } = validateQkd(req.body);
     if (errors.length) throw new HttpError(422, 'Invalid QKD parameters', errors);
-    const out = await callPython({ cmd: 'qkd', ...value });
+    const out = await callPython({ cmd: 'qkd', ...value }, { userId: req.user.id });
     const doc = await QkdRun.create({ owner: req.user.id, params: value, ...out });
+    await trimOwned(QkdRun, req.user.id, limits.keepQkdRuns);
     res.status(201).json(publicDoc(doc));
   }));
 
@@ -152,13 +212,19 @@ export function createApp() {
   }));
 
   // ---- experiments A-D
-  api.post('/experiments/run', ah(async (req, res) => {
+  api.post('/experiments/run', limitByUser(experimentLimiter, 'experiment batches'), ah(async (req, res) => {
     const owner = req.user.id;
     const { value, errors } = validateExperiment(req.body);
     if (errors.length) throw new HttpError(422, 'Invalid experiment parameters', errors);
-    if (await Experiment.exists({ owner, status: 'running' })) throw new HttpError(409, 'An experiment batch is already running');
-    const doc = await Experiment.create({ owner, params: value });
-    runExperimentJob(doc._id, value); // intentionally not awaited
+    let doc;
+    try {
+      // A partial unique index allows only one running batch per user, so simultaneous requests cannot both start one.
+      doc = await Experiment.create({ owner, params: value });
+    } catch (e) {
+      if (e.code === 11000) throw new HttpError(409, 'An experiment batch is already running');
+      throw e;
+    }
+    runExperimentJob(doc._id, owner, value); // intentionally not awaited; it never throws
     res.status(202).json(publicDoc(doc));
   }));
 
@@ -172,23 +238,40 @@ export function createApp() {
   api.use((req, _res, next) => next(new HttpError(404, `No such endpoint: ${req.method} ${req.originalUrl}`)));
   app.use('/api', api);
 
-  // Production: serve the built React client; unknown GET paths fall through to the SPA (client-side routes).
-  if (fs.existsSync(path.join(config.clientDist, 'index.html'))) {
-    const spaHeaders = (res) => res.set('Content-Security-Policy', CSP);
-    app.use(express.static(config.clientDist, { setHeaders: spaHeaders, index: false }));
+  // ------------------------------------------------------------------ the built React app
+  if (fs.existsSync(path.join(clientDist, 'index.html'))) {
+    const indexFile = path.join(clientDist, 'index.html');
+    const withCsp = (res) => res.set('Content-Security-Policy', CSP);
+    app.use(express.static(clientDist, {
+      index: false,
+      setHeaders(res, filePath) {
+        withCsp(res);
+        // Vite names bundles by content hash, so they can be cached for a year; everything else is revalidated.
+        res.set('Cache-Control', /[\\/]assets[\\/]/.test(filePath) ? 'public, max-age=31536000, immutable' : 'public, max-age=0, must-revalidate');
+      },
+    }));
+    // Client-side routes (/login, /dashboard/risk, ...) get index.html. A path with a file extension that was not
+    // found above is a genuinely missing file and must be a 404, not a 200 page of HTML.
     app.use((req, res, next) => {
-      if (req.method !== 'GET') return next();
-      spaHeaders(res);
-      return res.sendFile(path.join(config.clientDist, 'index.html'));
+      if ((req.method !== 'GET' && req.method !== 'HEAD') || path.extname(req.path)) return next();
+      withCsp(res);
+      res.set('Cache-Control', 'no-cache');
+      return res.sendFile(indexFile);
     });
   }
+  app.use((_req, res) => res.status(404).type('text/plain').send('Not found'));
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Malformed JSON body' });
     if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Request body too large' });
     if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, details: err.details });
-    if (err instanceof PythonError) return res.status(err.status).json({ error: err.message });
+    if (err instanceof PythonError) {
+      if (err.expose) return res.status(err.status).json({ error: err.message });
+      console.error(`[python] ${err.message}`); // paths and stack traces stay in the server log
+      return res.status(500).json({ error: 'The calculation engine failed. Please try again.' });
+    }
+    if (err.code === 11000) return res.status(409).json({ error: 'That already exists.' });
     if (err.name === 'ValidationError') return res.status(422).json({ error: err.message });
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });

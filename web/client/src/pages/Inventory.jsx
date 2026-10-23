@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { IconDatabase } from '../components/Icons.jsx';
+import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { Card, EmptyState, ErrorBox, Skeleton } from '../components/ui.jsx';
 
 const BLANK = {
@@ -92,17 +93,20 @@ export default function Inventory({ meta, onChanged }) {
   const [assets, setAssets] = useState(null);
   const [form, setForm] = useState(null); // { initial, editing }
   const [error, setError] = useState(null);
+  const confirm = useConfirm();
 
   const load = useCallback(() => api.assets().then(setAssets).catch(setError), []);
   useEffect(() => { load(); }, [load]);
 
   const changed = () => { setForm(null); load(); onChanged(); };
   const remove = async (a) => {
-    if (!window.confirm(`Delete ${a.id} "${a.name}"?`)) return;
+    const ok = await confirm({ title: `Delete ${a.id}?`, text: `"${a.name}" will be removed from your inventory.`, confirmLabel: 'Delete Asset', danger: true });
+    if (!ok) return;
     try { await api.deleteAsset(a.id); changed(); } catch (e) { setError(e); }
   };
   const reset = async () => {
-    if (!window.confirm('Replace the whole inventory with the 13 sample assets? Your changes will be lost.')) return;
+    const ok = await confirm({ title: 'Restore the sample inventory?', text: 'Your inventory is replaced by the 13 sample assets. Your changes are lost.', confirmLabel: 'Restore Sample', danger: true });
+    if (!ok) return;
     try { await api.resetAssets(); changed(); } catch (e) { setError(e); }
   };
   const nextId = () => {

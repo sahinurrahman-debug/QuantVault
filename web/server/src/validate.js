@@ -80,11 +80,12 @@ export function validateQkd(body) {
     sample_fraction: body.sample_fraction ?? 0.25,
     max_qber: body.max_qber ?? 0.11,
   };
-  if (!Number.isInteger(value.n_qubits) || value.n_qubits < 64 || value.n_qubits > 8192) errors.push('n_qubits must be an integer between 64 and 8192');
+  if (!Number.isInteger(value.n_qubits) || value.n_qubits < 256 || value.n_qubits > 8192) errors.push('n_qubits must be an integer between 256 and 8192');
   if (typeof value.eve_enabled !== 'boolean') errors.push('eve_enabled must be a boolean');
   num(errors, 'eve_fraction', value.eve_fraction, 0, 1);
   if (!NOISE.includes(value.noise_model)) errors.push(`noise_model must be one of: ${NOISE.join(', ')}`);
   num(errors, 'noise_p', value.noise_p, 0, 0.5);
+  if (value.noise_model === 'none') value.noise_p = 0; // a noise level without a noise model would be saved misleadingly
   num(errors, 'sample_fraction', value.sample_fraction, 0.05, 0.5);
   num(errors, 'max_qber', value.max_qber, 0.01, 0.25);
   if (body.seed !== undefined && body.seed !== null) {
@@ -139,4 +140,16 @@ export function validateLogin(body) {
     return { value: null, errors: ['Enter your email and password'] };
   }
   return { value: { email, password }, errors: [] };
+}
+
+export function validatePasswordChange(body) {
+  const { currentPassword, newPassword } = body || {};
+  const errors = [];
+  if (typeof currentPassword !== 'string' || !currentPassword || currentPassword.length > PASSWORD_MAX) errors.push('Enter your current password');
+  if (typeof newPassword !== 'string' || newPassword.length < PASSWORD_MIN || newPassword.length > PASSWORD_MAX) {
+    errors.push(`The new password must be ${PASSWORD_MIN}-${PASSWORD_MAX} characters`);
+  } else if (newPassword === currentPassword) {
+    errors.push('The new password must be different from the current one');
+  }
+  return { value: errors.length ? null : { currentPassword, newPassword }, errors };
 }

@@ -16,6 +16,6 @@ services:
         sync: false            # prompted at Blueprint creation; paste your Atlas connection string
       - key: NODE_ENV
         value: production
-      - key: PYTHON_CONCURRENCY
-        value: "1"             # one Python process at a time (free instances have ~512 MB RAM)
+      # Python work runs in two lanes (quick scoring: 2 at a time; QKD simulations: 1 at a time), so a long
+      # simulation never blocks the dashboard. Override with PYTHON_CONCURRENCY / PYTHON_HEAVY_CONCURRENCY.
       # Sessions use a Secure, httpOnly __Host- cookie in production (Render serves HTTPS); nothing to configure.

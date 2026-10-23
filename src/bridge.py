@@ -59,7 +59,7 @@ def cmd_meta(_req: dict) -> dict:
     cfg = RiskConfig()
     return {
         "algorithms": {k: {"role": v["role"], "family": v["family"], "qclass": v["qclass"], "q": v["q"],
-                           "note": v["note"]} for k, v in ALGORITHMS.items()},
+                           "note": v["note"], "weak": bool(v.get("weak"))} for k, v in ALGORITHMS.items()},
         "qclass_labels": QCLASS_LABELS,
         "sensitivity": list(SENSITIVITY), "exposure": list(EXPOSURE), "migration_difficulty": list(DIFFICULTY),
         "link_types": ["internet", "internal", "dedicated_fibre_p2p"],

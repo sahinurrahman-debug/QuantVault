@@ -246,7 +246,11 @@ def run_qkd(cfg: BB84Config, params: SecurityParams | None = None) -> QKDResult:
     if n_rem < 16:
         return abort("Too few sifted bits remain after sampling")
     if q_upper > params.max_qber:
-        return abort(f"QBER upper bound {q_upper:.1%} exceeds operational threshold {params.max_qber:.0%}")
+        reason = f"QBER upper bound {q_upper:.1%} exceeds operational threshold {params.max_qber:.0%}"
+        if q_sample <= params.max_qber:
+            # The measured error rate is fine; it is the small sample that cannot prove it. Say so.
+            reason += f" (measured {q_sample:.1%}, but {n_sample} compared bits are too few to prove it is low; send more qubits)"
+        return abort(reason)
 
     # Error reconciliation (leaks `leak_ec` parity bits).
     # Block sizes use the midpoint of the sample estimate and its upper bound: a small sample can

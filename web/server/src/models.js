@@ -7,8 +7,11 @@ const userSchema = new Schema({
   name: { type: String, required: true, trim: true, maxlength: 80 },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true, maxlength: 254 },
   passwordHash: { type: String, required: true }, // scrypt; never sent to a client
-  isDemo: { type: Boolean, default: false },       // the shared reviewer account
+  isDemo: { type: Boolean, default: false },       // the public demo "gateway": it owns no data, signing in creates a sandbox
+  isSandbox: { type: Boolean, default: false },    // a throw-away demo workspace created by one demo sign-in
+  sandboxExpiresAt: { type: Date },
 }, { timestamps: true });
+userSchema.index({ isSandbox: 1, sandboxExpiresAt: 1 });
 
 // Server-side session. The cookie holds a random token; only its SHA-256 is stored here,
 // so a database leak does not expose usable session tokens. MongoDB deletes expired rows (TTL).
@@ -60,17 +63,21 @@ const qkdRunSchema = new Schema({
 
 // A batch of experiments A-D (long-running, so it has a status).
 const experimentSchema = new Schema({
-  owner,
+  owner: { ...owner, index: false }, // indexed below (a plain owner index would clash with the partial unique one)
   status: { type: String, enum: ['running', 'done', 'failed'], default: 'running' },
   params: { type: Schema.Types.Mixed, required: true },
   result: { type: Schema.Types.Mixed, default: null },
   error: { type: String, default: '' },
   finishedAt: { type: Date },
 }, { timestamps: true });
+// At most ONE running batch per user, enforced by the database (a check-then-insert in code can race).
+experimentSchema.index({ owner: 1 }, { name: 'one_running_batch_per_owner', unique: true, partialFilterExpression: { status: 'running' } });
+experimentSchema.index({ owner: 1, createdAt: -1 });
 
 // Email addresses collected by the landing-page pilot-list form (never exposed by any endpoint).
 const subscriberSchema = new Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true, maxlength: 254 },
+  consentAt: { type: Date, default: Date.now },
 }, { timestamps: true });
 
 export const User = mongoose.models.User || mongoose.model('User', userSchema);

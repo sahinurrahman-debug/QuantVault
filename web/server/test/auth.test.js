@@ -3,8 +3,11 @@ import { execFileSync } from 'node:child_process';
 import { after, before, describe, it } from 'node:test';
 import { COOKIE_NAME, ensureDemoUser } from '../src/auth.js';
 import { createApp } from '../src/app.js';
-import { connectDb } from '../src/db.js';
-import { Session, User, ensureIndexes } from '../src/models.js';
+import { config } from '../src/config.js';
+import { connectDb, pruneSandboxes } from '../src/db.js';
+import {
+  Asset, Experiment, QkdRun, Session, User, ensureIndexes,
+} from '../src/models.js';
 import { Client, newAsset, PASSWORD } from './helpers.js';
 
 let db;
@@ -47,7 +50,8 @@ describe('sign up', () => {
     const c = anon();
     const r = await c.request('POST', '/auth/signup', { name: '  Grace Hopper ', email: 'Grace@Example.com', password: PASSWORD });
     assert.equal(r.status, 201);
-    assert.deepEqual(Object.keys(r.body.user).sort(), ['email', 'id', 'name']);
+    assert.deepEqual(Object.keys(r.body.user).sort(), ['demo', 'email', 'id', 'name']);
+    assert.equal(r.body.user.demo, false);
     assert.equal(r.body.user.email, 'grace@example.com');
     assert.equal(r.body.user.name, 'Grace Hopper');
     assert.ok(!JSON.stringify(r.body).includes('scrypt'));
@@ -322,5 +326,193 @@ describe('demo account', () => {
   it('refuses a sign-up that takes the demo email', async () => {
     const { email } = (await anon().request('GET', '/auth/demo')).body;
     assert.equal((await anon().request('POST', '/auth/signup', { name: 'Imposter', email, password: PASSWORD })).status, 409);
+  });
+});
+
+describe('demo sandboxes', () => {
+  const creds = async () => (await anon().request('GET', '/auth/demo')).body;
+
+  it('gives every demo sign-in its own private workspace', async () => {
+    const { email, password } = await creds();
+    const a = anon();
+    const b = anon();
+    const ra = await a.request('POST', '/auth/login', { email, password });
+    const rb = await b.request('POST', '/auth/login', { email, password });
+    assert.equal(ra.status, 200);
+    assert.equal(rb.status, 200);
+    assert.notEqual(ra.body.user.id, rb.body.user.id);
+    assert.equal(ra.body.user.demo, true);
+    assert.notEqual(ra.body.user.email, email, 'a visitor is never signed in as the doorway account itself');
+    await a.request('DELETE', '/assets/A01');
+    assert.equal((await a.request('GET', '/assets')).body.length, 12);
+    assert.equal((await b.request('GET', '/assets')).body.length, 13, "one visitor's edits never reach another visitor");
+  });
+
+  it('lets eight judges sign in at the same moment', async () => {
+    const { email, password } = await creds();
+    const results = await Promise.all(Array.from({ length: 8 }, () => anon().request('POST', '/auth/login', { email, password })));
+    assert.deepEqual(results.map((r) => r.status), Array(8).fill(200));
+    assert.equal(new Set(results.map((r) => r.body.user.id)).size, 8);
+  });
+
+  it('keeps the doorway account free of data', async () => {
+    const { email } = await creds();
+    const gateway = await User.findOne({ email, isDemo: true });
+    for (const Model of [Asset, QkdRun, Experiment]) assert.equal(await Model.countDocuments({ owner: gateway._id }), 0);
+  });
+
+  it('DEMO_ACCOUNT=false really switches the demo sign-in off', async () => {
+    const { email, password } = await creds();
+    config.demo.enabled = false;
+    try {
+      assert.equal((await anon().request('GET', '/auth/demo')).body.enabled, false);
+      assert.equal((await anon().request('POST', '/auth/login', { email, password })).status, 401, 'hidden credentials must not still work');
+    } finally {
+      config.demo.enabled = true;
+    }
+    assert.equal((await anon().request('POST', '/auth/login', { email, password })).status, 200);
+  });
+
+  it('keeps the advertised password working when DEMO_PASSWORD changes', async () => {
+    const original = config.demo.password;
+    const changed = 'A-brand-new-demo-pass-1';
+    config.demo.password = changed;
+    try {
+      await ensureDemoUser();
+      const { email, password } = await creds();
+      assert.equal(password, changed);
+      assert.equal((await anon().request('POST', '/auth/login', { email, password: changed })).status, 200);
+      assert.equal((await anon().request('POST', '/auth/login', { email, password: original })).status, 401);
+    } finally {
+      config.demo.password = original;
+      await ensureDemoUser();
+    }
+    const { email } = await creds();
+    assert.equal((await anon().request('POST', '/auth/login', { email, password: original })).status, 200);
+  });
+
+  it('deletes expired sandboxes together with everything they own', async () => {
+    const { email, password } = await creds();
+    const c = anon();
+    const id = (await c.request('POST', '/auth/login', { email, password })).body.user.id;
+    await c.request('POST', '/qkd/run', { n_qubits: 256, seed: 2 });
+    await User.updateOne({ _id: id }, { sandboxExpiresAt: new Date(Date.now() - 1000) });
+    assert.ok(await pruneSandboxes() >= 1);
+    assert.equal(await User.countDocuments({ _id: id }), 0);
+    for (const Model of [Asset, QkdRun, Experiment]) assert.equal(await Model.countDocuments({ owner: id }), 0);
+    assert.equal(await Session.countDocuments({ user: id }), 0);
+    assert.equal((await c.request('GET', '/assets')).status, 401, "an expired sandbox's cookie stops working");
+  });
+
+  it('keeps the number of sandboxes under the cap by dropping the oldest', async () => {
+    const { email, password } = await creds();
+    for (let i = 0; i < 3; i += 1) await anon().request('POST', '/auth/login', { email, password });
+    const total = await User.countDocuments({ isSandbox: true });
+    await pruneSandboxes(total - 2);
+    assert.equal(await User.countDocuments({ isSandbox: true }), total - 2);
+  });
+});
+
+describe('rate limits count failures, not successes', () => {
+  it('blocks an address after repeated failures, but never for successful sign-ins', async () => {
+    const srv = createApp({ limits: { ...config.limits, failuresPer15MinPerIp: 3, signupsPerHourPerIp: 100 } }).listen(0);
+    const root = `http://127.0.0.1:${srv.address().port}/api`;
+    try {
+      const { email, password } = (await new Client(root).request('GET', '/auth/demo')).body;
+      for (let i = 0; i < 6; i += 1) {
+        assert.equal((await new Client(root).request('POST', '/auth/login', { email, password })).status, 200, 'successful sign-ins are free');
+      }
+      for (let i = 0; i < 3; i += 1) {
+        assert.equal((await new Client(root).request('POST', '/auth/login', { email: `nobody${i}@example.com`, password: 'wrong-password-123' })).status, 401);
+      }
+      assert.equal((await new Client(root).request('POST', '/auth/login', { email, password })).status, 429);
+    } finally {
+      srv.close();
+    }
+  });
+
+  it('limits sign-ups per address', async () => {
+    const srv = createApp({ limits: { ...config.limits, signupsPerHourPerIp: 2 } }).listen(0);
+    const root = `http://127.0.0.1:${srv.address().port}/api`;
+    try {
+      const statuses = [];
+      for (let i = 0; i < 3; i += 1) {
+        statuses.push((await new Client(root).request('POST', '/auth/signup', { name: 'Burst', email: `burst${i}@example.com`, password: PASSWORD })).status);
+      }
+      assert.deepEqual(statuses, [201, 201, 429]);
+    } finally {
+      srv.close();
+    }
+  });
+});
+
+describe('session limits', () => {
+  it('keeps only the newest sessions per user', async () => {
+    const first = await signup('sessions@example.com');
+    const id = (await first.request('GET', '/auth/me')).body.user.id;
+    for (let i = 0; i < 14; i += 1) await anon().request('POST', '/auth/login', { email: 'sessions@example.com', password: PASSWORD });
+    assert.ok(await Session.countDocuments({ user: id }) <= config.limits.maxSessionsPerUser);
+  });
+});
+
+describe('account management', () => {
+  const NEW_PASSWORD = 'another-long-passphrase-9';
+
+  it('requires a session', async () => {
+    const c = anon();
+    assert.equal((await c.request('POST', '/auth/password', { currentPassword: PASSWORD, newPassword: NEW_PASSWORD })).status, 401);
+    assert.equal((await c.request('DELETE', '/auth/sessions')).status, 401);
+    assert.equal((await c.request('DELETE', '/auth/account', { password: PASSWORD })).status, 401);
+  });
+
+  it('changes the password, signs out other devices and keeps this one', async () => {
+    const here = await signup('changepw@example.com');
+    const elsewhere = anon();
+    assert.equal((await elsewhere.request('POST', '/auth/login', { email: 'changepw@example.com', password: PASSWORD })).status, 200);
+
+    const wrong = await here.request('POST', '/auth/password', { currentPassword: 'not-my-password-1', newPassword: NEW_PASSWORD });
+    assert.equal(wrong.status, 403, 'a wrong current password is 403, so the app does not sign the user out');
+    assert.ok((await here.request('GET', '/auth/me')).body.user, 'still signed in after the mistake');
+    assert.equal((await here.request('POST', '/auth/password', { currentPassword: PASSWORD, newPassword: 'short' })).status, 422);
+    assert.equal((await here.request('POST', '/auth/password', { currentPassword: PASSWORD, newPassword: PASSWORD })).status, 422);
+
+    assert.equal((await here.request('POST', '/auth/password', { currentPassword: PASSWORD, newPassword: NEW_PASSWORD })).status, 204);
+    assert.ok((await here.request('GET', '/auth/me')).body.user, 'this device stays signed in');
+    assert.equal((await elsewhere.request('GET', '/auth/me')).body.user, null, 'every other device is signed out');
+    assert.equal((await anon().request('POST', '/auth/login', { email: 'changepw@example.com', password: PASSWORD })).status, 401);
+    assert.equal((await anon().request('POST', '/auth/login', { email: 'changepw@example.com', password: NEW_PASSWORD })).status, 200);
+  });
+
+  it('signs out everywhere', async () => {
+    const a = await signup('everywhere@example.com');
+    const b = anon();
+    await b.request('POST', '/auth/login', { email: 'everywhere@example.com', password: PASSWORD });
+    assert.equal((await a.request('DELETE', '/auth/sessions')).status, 204);
+    assert.equal((await a.request('GET', '/auth/me')).body.user, null);
+    assert.equal((await b.request('GET', '/auth/me')).body.user, null);
+  });
+
+  it('deletes an account and all of its data, but only with the password', async () => {
+    const c = await signup('deleteme@example.com');
+    const id = (await c.request('GET', '/auth/me')).body.user.id;
+    await c.request('POST', '/qkd/run', { n_qubits: 256, seed: 4 });
+    assert.equal((await c.request('DELETE', '/auth/account', {})).status, 403);
+    assert.equal((await c.request('DELETE', '/auth/account', { password: 'wrong-password-123' })).status, 403);
+    assert.ok((await c.request('GET', '/auth/me')).body.user, 'a failed deletion does not sign the user out');
+    assert.equal((await c.request('DELETE', '/auth/account', { password: PASSWORD })).status, 204);
+    assert.equal((await anon().request('POST', '/auth/login', { email: 'deleteme@example.com', password: PASSWORD })).status, 401);
+    for (const Model of [Asset, QkdRun, Experiment]) assert.equal(await Model.countDocuments({ owner: id }), 0);
+    assert.equal(await Session.countDocuments({ user: id }), 0);
+    assert.equal(await User.countDocuments({ _id: id }), 0);
+  });
+
+  it('lets a demo workspace end itself without a password, but never change one', async () => {
+    const { email, password } = (await anon().request('GET', '/auth/demo')).body;
+    const c = anon();
+    const id = (await c.request('POST', '/auth/login', { email, password })).body.user.id;
+    assert.equal((await c.request('POST', '/auth/password', { currentPassword: password, newPassword: NEW_PASSWORD })).status, 403);
+    assert.equal((await c.request('DELETE', '/auth/account', {})).status, 204);
+    assert.equal(await User.countDocuments({ _id: id }), 0);
+    assert.equal(await User.countDocuments({ email, isDemo: true }), 1, 'the doorway itself is never deleted');
   });
 });

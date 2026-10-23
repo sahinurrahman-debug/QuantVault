@@ -1,8 +1,11 @@
 import React from 'react';
 import {
-  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { CHART, Card, Kpi, TIERS, TIER_COLOR, TOOLTIP } from '../components/ui.jsx';
+import ScoreBars from '../components/ScoreBars.jsx';
+import {
+  CHART, Card, Kpi, TIERS, TIER_COLOR, TOOLTIP,
+} from '../components/ui.jsx';
 
 export default function Overview({ risk, sweep, z }) {
   const o = risk.overview;
@@ -10,7 +13,7 @@ export default function Overview({ risk, sweep, z }) {
   const completeness = Math.round(o.inventory_completeness * 100);
   const unknown = risk.results.filter((a) => a.has_unknown);
   const bars = [...risk.results].sort((a, b) => b.risk_score - a.risk_score)
-    .map((a) => ({ name: a.name, score: a.risk_score, tier: a.tier }));
+    .map((a) => ({ id: a.id, name: a.name, score: a.risk_score, tier: a.tier, raw: a.risk_score_raw, adjusted: a.score_adjusted }));
   const sweepData = sweep?.rows.map((r) => ({ z: r.z, 'Mosca Violated': r.mosca_violated, 'Critical or High': r.urgent }));
 
   return (
@@ -18,7 +21,8 @@ export default function Overview({ risk, sweep, z }) {
       <div className="kpis">
         <Kpi value={total} label="Assets Inventoried" />
         <Kpi value={o.quantum_vulnerable} label="Quantum-Vulnerable Assets" color="var(--high)" />
-        <Kpi value={o.mosca_violated} label={`Mosca Violations (Z = ${z})`} color="var(--crit)" />
+        <Kpi value={o.mosca_violated} label={`Mosca Violations (Z = ${z})`} color="var(--crit)"
+          hint={o.mosca_possible > 0 ? `+${o.mosca_possible} possible (unknown crypto)` : undefined} />
         <Kpi value={o.urgent_review} label="Urgent Review (Critical or High)" color="var(--crit)" />
         <Kpi value={o.unknown_config} label="Unknown Configurations" color="var(--med)" />
         <Kpi value={o.uses_pq_or_hybrid} label="Already PQ or Hybrid" color="var(--low)" />
@@ -61,19 +65,7 @@ export default function Overview({ risk, sweep, z }) {
       </Card>
 
       <Card title="Risk Score by Asset" lead="R = 100 × (0.35C + 0.25Q + 0.20E + 0.20M)">
-        <div className="chart" style={{ height: 56 + bars.length * 30 }}>
-          <ResponsiveContainer>
-            <BarChart data={bars} layout="vertical" margin={{ left: 0, right: 16 }}>
-              <CartesianGrid stroke="rgba(255,255,255,0.1)" horizontal={false} />
-              <XAxis type="number" domain={[0, 100]} />
-              <YAxis type="category" dataKey="name" width={230} tick={{ fontSize: 13 }} interval={0} />
-              <Tooltip {...TOOLTIP} />
-              <Bar dataKey="score" name="R" radius={[0, 6, 6, 0]}>
-                {bars.map((b) => <Cell key={b.name} fill={TIER_COLOR[b.tier]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ScoreBars items={bars} />
       </Card>
     </>
   );

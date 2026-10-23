@@ -39,7 +39,10 @@ export function AuthProvider({ children }) {
     try { await api.logout(); } finally { setUser(null); }
   }, []);
 
-  const value = useMemo(() => ({ user, ready, login, signup, logout }), [user, ready, login, signup, logout]);
+  // The server already ended the session (sign out everywhere, account deleted); just forget the user here.
+  const signedOut = useCallback(() => setUser(null), []);
+
+  const value = useMemo(() => ({ user, ready, login, signup, logout, signedOut }), [user, ready, login, signup, logout, signedOut]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

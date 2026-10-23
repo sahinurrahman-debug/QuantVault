@@ -29,6 +29,10 @@ export const api = {
   login: (email, password) => request('/auth/login', { method: 'POST', body: { email, password } }),
   logout: () => request('/auth/logout', { method: 'POST' }),
   demoInfo: () => request('/auth/demo'),
+  // account management
+  changePassword: (currentPassword, newPassword) => request('/auth/password', { method: 'POST', body: { currentPassword, newPassword } }),
+  signOutEverywhere: () => request('/auth/sessions', { method: 'DELETE' }),
+  deleteAccount: (password) => request('/auth/account', { method: 'DELETE', body: { password } }),
   // data (all require a session)
   meta: () => request('/meta'),
   assets: () => request('/assets'),

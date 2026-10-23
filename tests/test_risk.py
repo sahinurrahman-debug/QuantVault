@@ -122,3 +122,63 @@ def test_migration_plan_has_five_phases_built_from_the_inventory():
     assert [p["name"] for p in plan] == ["Discover", "Prioritise", "Test", "Migrate", "Verify"]
     assert len(plan[0]["items"]) == 2  # the two unknown assets
     assert load_inventory()["assets"]
+
+
+# ---------------------------------------------------------------------------- audit regressions
+def test_forward_secrecy_flag_is_used_not_just_stored():
+    ok = analyse_asset(asset(key_establishment="ECDHE", forward_secrecy=True))
+    broken = analyse_asset(asset(key_establishment="ECDHE", forward_secrecy=False))
+    assert broken["components"]["Q"] == 1.0 > ok["components"]["Q"]
+    assert any("marked No" in w for w in broken["data_warnings"])
+    contradiction = analyse_asset(asset(key_establishment="RSA-KT", forward_secrecy=True))
+    assert any("cannot provide" in w for w in contradiction["data_warnings"])
+    assert analyse_asset(asset(key_establishment="ECDHE", forward_secrecy=None))["data_warnings"] == []
+
+
+def test_classical_weakness_is_not_reported_as_quantum_exposure():
+    r = analyse_asset(asset(key_establishment="ML-KEM", signature="ML-DSA", symmetric="3DES", hash="SHA-1"))
+    assert r["components"]["Q"] <= 0.3, "3DES / SHA-1 are classical problems, not quantum exposure"
+    assert not r["quantum_vulnerable"]
+    assert r["mosca"]["status"] == "not_applicable"
+    assert {w["id"] for w in r["classical_weakness"]} == {"3DES", "SHA-1"}
+    assert r["tier"] != "Low", "classically weak algorithms must not be hidden by the 'post-quantum, monitor' cap"
+
+
+def test_classical_weakness_raises_an_otherwise_low_asset_to_medium():
+    r = analyse_asset(asset(key_establishment="ML-KEM", signature="ML-DSA", symmetric="3DES", hash="SHA-256",
+                            confidentiality_years=2, exposure="isolated", sensitivity="internal", migration_difficulty="low", migration_years=1))
+    assert r["tier"] == "Medium"
+    assert any("classically weak" in why for why in r["tier_reasons"])
+
+
+def test_displayed_score_always_agrees_with_the_tier():
+    bounds = {"Low": (0, 40), "Medium": (40, 62), "High": (62, 75), "Critical": (75, 100.01)}
+    for r in analyse_inventory():
+        lo, hi = bounds[r["tier"]]
+        assert lo <= r["risk_score"] < hi, f"{r['name']}: R={r['risk_score']} but tier {r['tier']}"
+        assert r["risk_score_raw"] is not None
+    site = next(r for r in analyse_inventory() if r["name"].startswith("Public information"))
+    assert site["tier"] == "Low" and site["score_adjusted"] and site["risk_score"] < 40 < site["risk_score_raw"]
+
+
+def test_unknown_crypto_with_an_expired_window_is_counted_as_a_possible_violation():
+    results = analyse_inventory(cfg=RiskConfig(threat_horizon_years=15))
+    pacs = next(r for r in results if r["name"].startswith("Legacy radiology"))
+    assert pacs["mosca"]["status"] == "indeterminate" and pacs["mosca"]["possible_violation"]
+    o = overview(results)
+    assert o["mosca_possible"] >= 1
+    assert o["mosca_violated"] == sum(r["mosca"]["status"] == "violated" for r in results)
+
+
+@pytest.mark.parametrize("bad", [{"exposure": "moon"}, {"sensitivity": "top-secret"}, {"migration_difficulty": ""},
+                                 {"migration_years": "soon"}, {"migration_years": -3}, {"confidentiality_years": None, "migration_years": float("nan")}])
+def test_bad_input_is_a_clear_value_error_not_a_key_error(bad):
+    with pytest.raises(ValueError):
+        analyse_asset(asset(**bad))
+
+
+def test_missing_required_field_is_a_value_error():
+    a = asset()
+    del a["migration_years"]
+    with pytest.raises(ValueError, match="migration_years"):
+        analyse_asset(a)

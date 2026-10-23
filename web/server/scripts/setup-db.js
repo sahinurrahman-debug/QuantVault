@@ -39,7 +39,7 @@ function normalise(raw) {
   if (/<[^>]*password[^>]*>/i.test(uri) || uri.includes('<') || uri.includes('>')) {
     throw new Error('It still contains a <placeholder>. Replace <db_password> with the real password (no angle brackets).');
   }
-  // Make sure a database name is present: mongodb+srv://user:pass@host[/db][?options]
+  // Make sure a database name follows the host: <scheme>://<user-info>@<host>[/<db>][?<options>]
   uri = uri.replace(/^(mongodb(?:\+srv)?:\/\/[^/?]+)\/?(\?|$)/, `$1/${DEFAULT_DB}$2`);
   return uri;
 }

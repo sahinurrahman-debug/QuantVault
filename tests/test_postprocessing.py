@@ -88,3 +88,15 @@ def test_threshold_is_configurable():
     cfg = BB84Config(n_qubits=2048, noise_model="readout", noise_p=0.05, seed=25)
     strict = run_qkd(cfg, SecurityParams(max_qber=0.05))
     assert not strict.accepted
+
+
+def test_a_clean_but_small_run_explains_that_the_sample_is_too_small():
+    r = run_qkd(BB84Config(n_qubits=512, seed=5))
+    assert not r.accepted and r.qber_true == 0.0
+    assert "too few to prove" in r.abort_reason and "send more qubits" in r.abort_reason
+
+
+def test_a_genuinely_noisy_run_is_not_blamed_on_sample_size():
+    r = run_qkd(BB84Config(n_qubits=2048, eve_enabled=True, seed=6))
+    assert not r.accepted
+    assert "send more qubits" not in r.abort_reason

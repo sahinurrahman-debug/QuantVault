@@ -23,8 +23,8 @@ export function MoscaBadge({ mosca }) {
   return <span className="badge m-na">Not Applicable</span>;
 }
 
-export const Kpi = ({ value, label, color }) => (
-  <div className="kpi"><b style={color ? { color } : undefined}>{value}</b><span>{label}</span></div>
+export const Kpi = ({ value, label, color, hint }) => (
+  <div className="kpi"><b style={color ? { color } : undefined}>{value}</b><span>{label}</span>{hint && <small className="kpi-hint">{hint}</small>}</div>
 );
 
 /** Glass card that fades in the first time it scrolls into view. */
@@ -104,7 +104,8 @@ export function AssetDetail({ asset, qlabels }) {
         <div>
           <b>Score Components</b>
           <ComponentBars components={asset.components} />
-          <p><small>Security Exposure (C, Q, E): <b>{asset.security_exposure}</b> · Migration Priority R (Adds M): <b>{asset.risk_score}</b></small></p>
+          <p><small>Security Exposure (C, Q, E): <b>{asset.security_exposure}</b> · Migration Priority R (Adds M): <b>{asset.risk_score}</b>
+            {asset.score_adjusted && <> (Weighted Score {asset.risk_score_raw})</>}</small></p>
           <p><b>Mosca</b>{line('Confidentiality', mc)}{line('Authenticity', ma)}</p>
           {asset.tier_reasons.length > 0 && <p><small>{asset.tier_reasons.join(' ')}</small></p>}
         </div>
@@ -120,6 +121,12 @@ export function AssetDetail({ asset, qlabels }) {
           </table>
         </div>
       </div>
+      {asset.classical_weakness?.length > 0 && (
+        <p className="warn"><b>Classical Weakness:</b> {asset.classical_weakness.map((w) => `${w.family} (${w.role.replace('_', ' ')})`).join(', ')}. This is a problem today, independent of quantum computers.</p>
+      )}
+      {asset.data_warnings?.length > 0 && (
+        <p className="warn"><b>Check This Entry:</b> {asset.data_warnings.join(' ')}</p>
+      )}
       <p><b>Recommended Next Actions</b></p>
       <ul className="clean">
         {asset.recommendations.map((r) => (

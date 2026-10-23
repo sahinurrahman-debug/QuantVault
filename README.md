@@ -252,13 +252,16 @@ Production-style (Express serves the built React app on http://localhost:5000):
 npm run build
 npm start                      # uses MONGODB_URI from the environment or web/server/.env
 npm test                       # API tests; they use their own temporary database and never touch Atlas
+cd client && npm test          # React tests (vitest)
 ```
 
 See `web/server/.env.example` for the settings (`MONGODB_URI`, `PORT`, `PYTHON_BIN`).
 
-**Demo account.** The sign-in page shows demo credentials (`demo@quantvault.app` / `DemoPass-2026!`) with a one-click button. It is a shared sandbox reset to the sample data on every sign-in; set `DEMO_ACCOUNT=false` to turn it off.
+**Demo account.** The sign-in page shows demo credentials (`demo@quantvault.app` / `DemoPass-2026!`) with a one-click button. The demo login is a doorway, not a shared workspace: every demo sign-in creates its own private sandbox copy of the sample data, so visitors never see or overwrite each other's changes. Sandboxes are deleted after 24 hours (or immediately with **End Demo** on the Account page) and at most 300 exist at once. Set `DEMO_ACCOUNT=false` to turn the demo off.
 
-**Accounts.** Open `/signup` to create an account, then `/login` to sign in; `/dashboard` is protected and redirects visitors to the sign-in page. Each account gets its own private copy of the sample inventory, QKD run history and experiment results. Sessions use a random token in an `httpOnly`, `SameSite=Lax` cookie (`Secure` with a `__Host-` prefix in production); only a SHA-256 of the token is stored server-side. Passwords are hashed with scrypt, every data route requires a session and filters by owner, writes from other origins are rejected, and repeated failed sign-ins are rate-limited.
+**Accounts.** Open `/signup` to create an account, then `/login` to sign in; `/dashboard` is protected and redirects visitors to the sign-in page. Each account gets its own private copy of the sample inventory, QKD run history and experiment results. Sessions use a random token in an `httpOnly`, `SameSite=Lax` cookie (`Secure` with a `__Host-` prefix in production); only a SHA-256 of the token is stored server-side. Passwords are hashed with scrypt, every data route requires a session and filters by owner, writes from other origins are rejected, and repeated failed sign-ins are rate-limited. The **Account** page (`/account`) changes the password (other devices are signed out), signs out every device, and deletes the account with all of its data.
+
+**Capacity.** The Python engines run in two lanes so a long job cannot starve quick ones: quick scoring (`PYTHON_CONCURRENCY`, default 2) and QKD simulations and experiment batches (`PYTHON_HEAVY_CONCURRENCY`, default 1), each with queue and per-user limits. Per-user hourly quotas cap QKD runs and experiment batches, only one experiment batch can run per account at a time, and each account keeps its latest 50 QKD runs and 5 experiment batches.
 
 ---
 

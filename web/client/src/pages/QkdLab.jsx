@@ -79,6 +79,7 @@ function Controls({ onRun, busy }) {
         <div className="form">
           <label>Qubits Transmitted: {p.n_qubits}
             <input type="range" min="256" max="8192" step="256" value={p.n_qubits} onChange={(e) => set('n_qubits')(Number(e.target.value))} />
+            {p.n_qubits < 1024 && <small>Below about 1,000 qubits even a perfect channel cannot be certified.</small>}
           </label>
           <label>Eavesdropper (Intercept-Resend)
             <select value={String(p.eve_enabled)} onChange={(e) => set('eve_enabled')(e.target.value === 'true')}>
@@ -155,9 +156,12 @@ function Experiments({ meta }) {
     return () => clearInterval(t);
   }, [running, refresh]);
 
+  const [starting, setStarting] = useState(false);
   const start = async () => {
+    if (starting) return;
+    setStarting(true);
     setError(null);
-    try { await api.runExperiments({ n_qubits: 2048, reps: 3 }); refresh(); } catch (e) { setError(e); }
+    try { await api.runExperiments({ n_qubits: 2048, reps: 3 }); await refresh(); } catch (e) { setError(e); } finally { setStarting(false); }
   };
 
   const result = state?.done?.result;
@@ -180,7 +184,7 @@ function Experiments({ meta }) {
   return (
     <Card title="Experiments A–D" lead="A: No Eve, No Noise · B: Eve, No Noise · C: Noise Only · D: Eve and Noise">
       <div className="row-actions" style={{ marginTop: 0, marginBottom: 8 }}>
-        <button className="btn primary" onClick={start} disabled={running}>{running ? <Spinner text="Running (about 40 s)…" /> : 'Re-Run Experiments'}</button>
+        <button className="btn primary" onClick={start} disabled={running || starting}>{running || starting ? <Spinner text="Running (about 40 s)…" /> : 'Re-Run Experiments'}</button>
         <label>Noise Model&nbsp;
           <select value={model} onChange={(e) => setModel(e.target.value)} style={{ width: 'auto' }}>
             {['bitflip', 'depolarizing', 'readout'].map((m) => <option key={m} value={m}>{meta.noise_labels[m]}</option>)}
@@ -214,8 +218,7 @@ function Experiments({ meta }) {
   );
 }
 
-export default function QkdLab({ meta }) {
-  const [run, setRun] = useState(null);
+export default function QkdLab({ meta, run, setRun }) {
   const [runs, setRuns] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -227,7 +230,9 @@ export default function QkdLab({ meta }) {
     setError(null);
     try { setRun(await api.runQkd(params)); loadRuns(); } catch (e) { setError(e); } finally { setBusy(false); }
   };
-  const clear = async () => { await api.clearQkdRuns(); setRuns([]); };
+  const clear = async () => {
+    try { await api.clearQkdRuns(); setRuns([]); } catch (e) { setError(e); }
+  };
 
   return (
     <>

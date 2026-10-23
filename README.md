@@ -17,6 +17,9 @@
 | **Tier** | Both |
 | **Repository** | [vtu-hc-hackerslobby](https://github.com/vtu-qiskit-fall-fest-2026/vtu-hc-hackerslobby.git) |
 | **Organisation** | [vtu-qiskit-fall-fest-2026](https://github.com/vtu-qiskit-fall-fest-2026) |
+| **Presentation** | [VTU-QFF-HC-0108.pptx](docs/VTU-QFF-HC-0108.pptx) |
+| **Demo Video** | [Watch on Vimeo](https://vimeo.com/1238720241) |
+| **Live Demo** | [quantvault-n8cp.onrender.com](https://quantvault-n8cp.onrender.com/) |
 | **Event** | VTU-QFF Hackathon — VTU-Qiskit Fall Fest 2026 |
 
 </div>
@@ -343,7 +346,7 @@ git pull --rebase       # update your branch on top of main
 - [ ] `requirements.txt` committed and project runs from a clean clone
 - [ ] Code pushed to `main` and the latest `main` builds successfully
 - [ ] Notebooks committed with **cleared outputs** (or use `nbstrip`)
-- [ ] `README` includes a demo screenshot / video link
+- [x] `README` includes a demo screenshot / video link
 - [ ] Short project summary submitted on the hackathon portal
 
 ---

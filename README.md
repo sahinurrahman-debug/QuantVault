@@ -80,6 +80,7 @@ statement from the brief if one applies.
 Describe your solution. Keep it concrete: the core idea, the user flow, and
 the quantum/ML technique you are applying.
 -->
+[![Live Demo](https://img.shields.io/badge/Live-Demo-blue?style=for-the-badge)](https://quantvault-n8cp.onrender.com/)
 
 **Solution:** **QuantVault: Quantum-Aware Cryptographic Risk & Migration Framework.** It combines three layers: *discovery* (a cryptographic inventory of a sample hospital, classified by algorithm and role), *decision-making* (Mosca's inequality `X + Y > Z` plus a configurable risk score, with a threat-horizon slider and a generated five-phase migration roadmap) and *demonstration* (a Qiskit/Aer BB84 simulator with an intercept-resend eavesdropper, noise models, error reconciliation and privacy amplification). Everything is shown in a **MERN dashboard** (MongoDB + Express + React, in `web/`) with an editable inventory and four analysis pages: exposure overview, risk prioritisation, QKD laboratory, and migration & QKD-vs-PQC. A zero-dependency static version is also generated at `docs/dashboard.html`.
 

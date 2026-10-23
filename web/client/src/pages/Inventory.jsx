@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { Card, ErrorBox } from '../components/ui.jsx';
+import { IconDatabase } from '../components/Icons.jsx';
+import { Card, EmptyState, ErrorBox, Skeleton } from '../components/ui.jsx';
 
 const BLANK = {
   id: '', name: '', category: '', protocol: '', key_establishment: 'UNKNOWN', signature: null, symmetric: null, hash: null,
@@ -8,15 +9,17 @@ const BLANK = {
   sensitivity: 'confidential', exposure: 'internal', migration_difficulty: 'medium', link_type: 'internal', notes: '',
 };
 
-const ROLES = [['key_establishment', 'Key establishment'], ['signature', 'Signature'], ['symmetric', 'Symmetric cipher'], ['hash', 'Hash']];
+const titleCase = (s) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const ROLES = [['key_establishment', 'Key Establishment'], ['signature', 'Signature'], ['symmetric', 'Symmetric Cipher'], ['hash', 'Hash']];
 
 function AlgoSelect({ role, label, value, meta, onChange }) {
   const options = Object.entries(meta.algorithms).filter(([, a]) => a.role === role);
   return (
     <label>{label}
       <select value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}>
-        <option value="">Not applicable</option>
-        <option value="UNKNOWN">UNKNOWN (not inventoried)</option>
+        <option value="">Not Applicable</option>
+        <option value="UNKNOWN">Unknown (Not Inventoried)</option>
         {options.map(([id, a]) => <option key={id} value={id}>{id} — {a.family}</option>)}
       </select>
     </label>
@@ -35,7 +38,7 @@ function AssetForm({ initial, meta, editing, onSaved, onCancel }) {
     <label>{label}<input type="number" min="0" max={max} step="1" value={a[k]} onChange={(e) => set(k)(e.target.value === '' ? '' : Number(e.target.value))} /></label>
   );
   const choice = (k, label, options) => (
-    <label>{label}<select value={a[k]} onChange={(e) => set(k)(e.target.value)}>{options.map((o) => <option key={o} value={o}>{o.replace('_', ' ')}</option>)}</select></label>
+    <label>{label}<select value={a[k]} onChange={(e) => set(k)(e.target.value)}>{options.map((o) => <option key={o} value={o}>{titleCase(o)}</option>)}</select></label>
   );
 
   async function submit(e) {
@@ -53,7 +56,7 @@ function AssetForm({ initial, meta, editing, onSaved, onCancel }) {
   }
 
   return (
-    <Card title={editing ? `Edit ${a.id}` : 'Add asset'} lead="Choose algorithms from the catalogue. “UNKNOWN” is scored conservatively; “Not applicable” means the role is not used.">
+    <Card title={editing ? `Edit ${a.id}` : 'Add Asset'} lead="Choose each algorithm from the catalogue.">
       <form onSubmit={submit}>
         <div className="form">
           {text('id', 'ID (e.g. A14)', { disabled: editing, required: true, maxLength: 16 })}
@@ -61,23 +64,23 @@ function AssetForm({ initial, meta, editing, onSaved, onCancel }) {
           {text('category', 'Category', { maxLength: 120 })}
           {text('protocol', 'Protocol', { maxLength: 120 })}
           {ROLES.map(([role, label]) => <AlgoSelect key={role} role={role} label={label} value={a[role]} meta={meta} onChange={set(role)} />)}
-          <label>Forward secrecy
+          <label>Forward Secrecy
             <select value={a.forward_secrecy === null ? '' : String(a.forward_secrecy)} onChange={(e) => set('forward_secrecy')(e.target.value === '' ? null : e.target.value === 'true')}>
-              <option value="">Unknown / n.a.</option><option value="true">Yes</option><option value="false">No</option>
+              <option value="">Unknown</option><option value="true">Yes</option><option value="false">No</option>
             </select>
           </label>
-          {number('confidentiality_years', 'Confidentiality lifetime X (years)', 100)}
-          {number('integrity_years', 'Signature-trust lifetime (years)', 100)}
-          {number('migration_years', 'Migration time Y (years)', 30)}
+          {number('confidentiality_years', 'Confidentiality Lifetime X (Years)', 100)}
+          {number('integrity_years', 'Signature-Trust Lifetime (Years)', 100)}
+          {number('migration_years', 'Migration Time Y (Years)', 30)}
           {choice('sensitivity', 'Sensitivity', meta.sensitivity)}
-          {choice('exposure', 'External exposure', meta.exposure)}
-          {choice('migration_difficulty', 'Migration difficulty', meta.migration_difficulty)}
-          {choice('link_type', 'Link type', meta.link_types)}
+          {choice('exposure', 'External Exposure', meta.exposure)}
+          {choice('migration_difficulty', 'Migration Difficulty', meta.migration_difficulty)}
+          {choice('link_type', 'Link Type', meta.link_types)}
           <label className="wide">Notes<textarea rows={2} maxLength={500} value={a.notes} onChange={(e) => set('notes')(e.target.value)} /></label>
         </div>
         <ErrorBox error={error} />
         <div className="row-actions">
-          <button className="btn primary" type="submit" disabled={busy}>{editing ? 'Save changes' : 'Add asset'}</button>
+          <button className="btn primary" type="submit" disabled={busy}>{editing ? 'Save Changes' : 'Add Asset'}</button>
           <button className="btn" type="button" onClick={onCancel}>Cancel</button>
         </div>
       </form>
@@ -109,13 +112,22 @@ export default function Inventory({ meta, onChanged }) {
 
   return (
     <>
-      <Card title="Cryptographic inventory" lead="Stored in MongoDB. Every change re-scores the risk assessment through the Python engine.">
+      <Card title="Cryptographic Inventory" lead="Stored in MongoDB. Every change re-scores the assessment.">
         <div className="row-actions" style={{ marginTop: 0, marginBottom: 12 }}>
-          <button className="btn primary" onClick={() => setForm({ initial: { ...BLANK, id: nextId() }, editing: false })}>Add asset</button>
-          <button className="btn danger" onClick={reset}>Reset to sample inventory</button>
+          <button className="btn primary" onClick={() => setForm({ initial: { ...BLANK, id: nextId() }, editing: false })}>Add Asset</button>
+          <button className="btn danger" onClick={reset}>Reset to Sample Inventory</button>
         </div>
         <ErrorBox error={error} />
-        {!assets ? <p className="muted">Loading…</p> : (
+        {!assets && !error && <div role="status" aria-label="Loading inventory"><Skeleton className="h-6 w-full" /><Skeleton className="mt-3 h-6 w-full" /><Skeleton className="mt-3 h-6 w-3/4" /></div>}
+        {assets && assets.length === 0 && (
+          <EmptyState icon={IconDatabase} title="No Assets in the Inventory" text="Add your first asset, or restore the 13-asset sample inventory.">
+            <div className="row-actions">
+              <button className="btn primary" onClick={() => setForm({ initial: { ...BLANK, id: nextId() }, editing: false })}>Add Asset</button>
+              <button className="btn" onClick={reset}>Restore Sample Inventory</button>
+            </div>
+          </EmptyState>
+        )}
+        {assets && assets.length > 0 && (
           <div className="scroll">
             <table>
               <thead><tr><th>ID</th><th>Asset</th><th>KE</th><th>Sig</th><th>Sym</th><th>Hash</th><th>X</th><th>Y</th><th>Exposure</th><th /></tr></thead>
@@ -124,7 +136,7 @@ export default function Inventory({ meta, onChanged }) {
                   <tr key={a.id}>
                     <td>{a.id}</td><td><b>{a.name}</b><br /><small>{a.protocol}</small></td>
                     <td>{a.key_establishment ?? '–'}</td><td>{a.signature ?? '–'}</td><td>{a.symmetric ?? '–'}</td><td>{a.hash ?? '–'}</td>
-                    <td>{Math.max(a.confidentiality_years, a.integrity_years)}</td><td>{a.migration_years}</td><td>{a.exposure}</td>
+                    <td>{Math.max(a.confidentiality_years, a.integrity_years)}</td><td>{a.migration_years}</td><td>{titleCase(a.exposure)}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="btn small" onClick={() => setForm({ initial: { ...BLANK, ...a }, editing: true })}>Edit</button>{' '}
                       <button className="btn small danger" onClick={() => remove(a)}>Delete</button>

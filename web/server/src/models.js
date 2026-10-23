@@ -2,10 +2,33 @@ import mongoose from 'mongoose';
 
 const { Schema } = mongoose;
 
+// ---------------------------------------------------------------------- accounts
+const userSchema = new Schema({
+  name: { type: String, required: true, trim: true, maxlength: 80 },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true, maxlength: 254 },
+  passwordHash: { type: String, required: true }, // scrypt; never sent to a client
+  isDemo: { type: Boolean, default: false },       // the shared reviewer account
+}, { timestamps: true });
+
+// Server-side session. The cookie holds a random token; only its SHA-256 is stored here,
+// so a database leak does not expose usable session tokens. MongoDB deletes expired rows (TTL).
+const sessionSchema = new Schema({
+  tokenHash: { type: String, required: true, unique: true },
+  user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  expiresAt: { type: Date, required: true, index: { expireAfterSeconds: 0 } },
+  lastSeen: { type: Date, default: Date.now },
+  userAgent: { type: String, default: '' },
+}, { timestamps: true });
+
+// ---------------------------------------------------------------------- user-owned data
+// Every document below carries `owner`; every query in the API filters by it.
+const owner = { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true };
+
 // One cryptographic asset. Algorithm ids are defined in src/algorithms.py;
 // `null` = role not applicable, "UNKNOWN" = not inventoried (scored conservatively).
 const assetSchema = new Schema({
-  id: { type: String, required: true, unique: true, trim: true },
+  owner,
+  id: { type: String, required: true, trim: true },
   name: { type: String, required: true, trim: true },
   category: { type: String, default: '' },
   protocol: { type: String, default: '' },
@@ -23,9 +46,11 @@ const assetSchema = new Schema({
   link_type: { type: String, default: 'internal' },
   notes: { type: String, default: '' },
 }, { timestamps: true });
+assetSchema.index({ owner: 1, id: 1 }, { unique: true }); // asset ids are unique per user, not globally
 
 // One simulated BB84 run (parameters, summary statistics and the first qubits).
 const qkdRunSchema = new Schema({
+  owner,
   params: { type: Schema.Types.Mixed, required: true },
   summary: { type: Schema.Types.Mixed, required: true },
   security: { type: Schema.Types.Mixed },
@@ -35,6 +60,7 @@ const qkdRunSchema = new Schema({
 
 // A batch of experiments A-D (long-running, so it has a status).
 const experimentSchema = new Schema({
+  owner,
   status: { type: String, enum: ['running', 'done', 'failed'], default: 'running' },
   params: { type: Schema.Types.Mixed, required: true },
   result: { type: Schema.Types.Mixed, default: null },
@@ -42,12 +68,31 @@ const experimentSchema = new Schema({
   finishedAt: { type: Date },
 }, { timestamps: true });
 
+// Email addresses collected by the landing-page pilot-list form (never exposed by any endpoint).
+const subscriberSchema = new Schema({
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true, maxlength: 254 },
+}, { timestamps: true });
+
+export const User = mongoose.models.User || mongoose.model('User', userSchema);
+export const Session = mongoose.models.Session || mongoose.model('Session', sessionSchema);
 export const Asset = mongoose.models.Asset || mongoose.model('Asset', assetSchema);
 export const QkdRun = mongoose.models.QkdRun || mongoose.model('QkdRun', qkdRunSchema);
 export const Experiment = mongoose.models.Experiment || mongoose.model('Experiment', experimentSchema);
+export const Subscriber = mongoose.models.Subscriber || mongoose.model('Subscriber', subscriberSchema);
 
-/** Plain object in the shape the Python engine expects. */
+/** Build indexes and drop any that no longer match the schemas (e.g. the old global asset-id index). */
+export async function ensureIndexes() {
+  await Promise.all([User, Session, Asset, QkdRun, Experiment, Subscriber].map((m) => m.syncIndexes()));
+}
+
+/** Plain object in the shape the Python engine expects (no ownership or bookkeeping fields). */
 export function toPlainAsset(doc) {
-  const { _id, __v, createdAt, updatedAt, ...rest } = doc.toObject ? doc.toObject() : doc;
+  const { _id, __v, createdAt, updatedAt, owner: _owner, ...rest } = doc.toObject ? doc.toObject() : doc;
+  return rest;
+}
+
+/** A document as sent to its owner: no internal owner id. */
+export function publicDoc(doc) {
+  const { owner: _owner, __v, ...rest } = doc.toObject ? doc.toObject() : doc;
   return rest;
 }

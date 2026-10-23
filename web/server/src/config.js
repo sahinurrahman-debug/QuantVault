@@ -19,6 +19,8 @@ function findPython() {
 export const config = {
   port: Number(process.env.PORT) || 5000,
   mongoUri: process.env.MONGODB_URI || '',
+  // Opt-in only: a throw-away local database instead of MongoDB Atlas (see connectDb).
+  useLocalDb: process.env.USE_LOCAL_DB === 'true',
   isProd: process.env.NODE_ENV === 'production',
   python: findPython(),
   pythonTimeoutMs: Number(process.env.PYTHON_TIMEOUT_MS) || 180_000,
@@ -27,4 +29,14 @@ export const config = {
   dataDir: path.resolve(here, '..', '.data'),
   clientDist: path.resolve(here, '..', '..', 'client', 'dist'),
   maxAssets: 200,
+  // Sessions: opaque random token in an httpOnly cookie; only its SHA-256 is stored server-side.
+  sessionDays: 7,
+  cookieSecure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : process.env.NODE_ENV === 'production',
+  authMaxFailures: Number(process.env.AUTH_MAX_FAILURES) || 8,
+  // Public demo account for reviewers (credentials are shown on the sign-in page). Disable with DEMO_ACCOUNT=false.
+  demo: {
+    enabled: process.env.DEMO_ACCOUNT !== 'false',
+    email: (process.env.DEMO_EMAIL || 'demo@quantvault.app').toLowerCase(),
+    password: process.env.DEMO_PASSWORD || 'DemoPass-2026!',
+  },
 };

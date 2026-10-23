@@ -8,27 +8,27 @@ used with a symmetric cipher (e.g. AES-256-GCM) to protect the traffic.
 
 from __future__ import annotations
 
-NOISE_LABELS = {"bitflip": "Bit-flip (channel)", "depolarizing": "Depolarizing (channel)",
-                "readout": "Readout error (Bob's detector)"}
+NOISE_LABELS = {"bitflip": "Bit-Flip (Channel)", "depolarizing": "Depolarizing (Channel)",
+                "readout": "Readout Error (Bob's Detector)"}
 
 COMPARISON_ROWS = [
-    ("Fundamental approach",
+    ("Fundamental Approach",
      "Quantum states plus an authenticated classical channel",
      "Classical algorithms designed to resist known quantum attacks"),
     ("Example", "BB84", "ML-KEM (FIPS 203) for key establishment; ML-DSA (FIPS 204) for signatures"),
-    ("Specialised hardware", "Generally required for a physical deployment", "Not required"),
-    ("Network infrastructure", "Needs a suitable quantum channel (e.g. dedicated fibre)",
+    ("Specialised Hardware", "Generally required for a physical deployment", "Not required"),
+    ("Network Infrastructure", "Needs a suitable quantum channel (e.g. dedicated fibre)",
      "Runs over conventional digital networks"),
-    ("Deployment complexity", "Often high", "Usually compatible with existing IT, though migration is still non-trivial"),
-    ("Distance / topology limits", "Set by the physical channel and trusted-node infrastructure",
+    ("Deployment Complexity", "Often high", "Usually compatible with existing IT, though migration is still non-trivial"),
+    ("Distance / Topology Limits", "Set by the physical channel and trusted-node infrastructure",
      "Normal network constraints only"),
-    ("Security assumptions", "Protocol, device, implementation, authentication and physical-channel assumptions",
+    ("Security Assumptions", "Protocol, device, implementation, authentication and physical-channel assumptions",
      "Mathematical hardness assumptions, specification and implementation security"),
-    ("Needs authentication?", "Yes: an authenticated classical channel is mandatory",
+    ("Needs Authentication?", "Yes: an authenticated classical channel is mandatory",
      "Yes: authenticity comes from signatures/certificates (ML-DSA, SLH-DSA, ...)"),
-    ("Typical application", "Specialised point-to-point key-distribution links",
+    ("Typical Application", "Specialised point-to-point key-distribution links",
      "Broadly applicable key establishment and signatures"),
-    ("Main limitation", "Infrastructure cost, hardware constraints, deployment complexity",
+    ("Main Limitation", "Infrastructure cost, hardware constraints, deployment complexity",
      "Depends on the chosen algorithm and a correct implementation; migration effort"),
 ]
 

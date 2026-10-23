@@ -18,5 +18,4 @@ services:
         value: production
       - key: PYTHON_CONCURRENCY
         value: "1"             # one Python process at a time (free instances have ~512 MB RAM)
-      - key: SKIP_EXPERIMENT_SEED
-        value: "1"             # skip the first-start experiment batch; use "Re-run experiments" in the QKD lab
+      # Sessions use a Secure, httpOnly __Host- cookie in production (Render serves HTTPS); nothing to configure.

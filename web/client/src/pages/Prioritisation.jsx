@@ -1,5 +1,5 @@
 import React, { Fragment, useMemo, useState } from 'react';
-import { AssetDetail, Card, MoscaBadge, TIERS, TierBadge } from '../components/ui.jsx';
+import { AssetDetail, Card, EmptyState, MoscaBadge, TIERS, TierBadge } from '../components/ui.jsx';
 
 export default function Prioritisation({ risk, meta, z }) {
   const [open, setOpen] = useState(null);
@@ -8,17 +8,22 @@ export default function Prioritisation({ risk, meta, z }) {
 
   return (
     <Card
-      title={`Risk prioritisation at Z = ${z} years`}
-      lead="Click a row for component scores, mechanisms and recommended actions. KE / Sig / Sym = key establishment / signature / symmetric. X is the confidentiality (or signature-trust) lifetime and Y the migration time, in years. Mosca's inequality is a prioritisation heuristic, not a probability of compromise."
+      title={`Risk Prioritisation at Z = ${z} Years`}
+      lead="Select a row for score components, mechanisms and recommended actions."
     >
       <p>
         {TIERS.map((t) => (
-          <button key={t} className="chip" aria-pressed={filter === t} onClick={() => setFilter(filter === t ? null : t)} style={{ marginRight: 6 }}>
+          <button key={t} className="chip" aria-pressed={filter === t} onClick={() => setFilter(filter === t ? null : t)}>
             {t} ({risk.overview.tier_counts[t]})
           </button>
         ))}
       </p>
-      <div className="scroll">
+      {rows.length === 0 && (
+        <EmptyState title={`No ${filter} Assets at Z = ${z}`} text="Nothing falls in this tier at the selected horizon. Clear the filter or change the horizon.">
+          <button className="btn" onClick={() => setFilter(null)}>Clear Filter</button>
+        </EmptyState>
+      )}
+      <div className="scroll" hidden={rows.length === 0}>
         <table>
           <thead>
             <tr><th>#</th><th>Asset</th><th>KE / Sig / Sym</th><th>X</th><th>Y</th><th>Mosca (Z={z})</th><th>R</th><th>Exposure</th><th>Tier</th></tr>

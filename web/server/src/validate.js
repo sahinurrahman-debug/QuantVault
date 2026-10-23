@@ -101,3 +101,42 @@ export function validateExperiment(body) {
   if (!Number.isInteger(value.reps) || value.reps < 1 || value.reps > 10) errors.push('reps must be an integer between 1 and 10');
   return { value, errors };
 }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+export function validateEmail(body) {
+  const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+  if (!email || email.length > 254 || !EMAIL_RE.test(email)) return { value: null, errors: ['Please enter a valid email address'] };
+  return { value: email, errors: [] };
+}
+
+export const PASSWORD_MIN = 10;
+export const PASSWORD_MAX = 128;
+
+function checkEmail(raw) {
+  const email = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  return email && email.length <= 254 && EMAIL_RE.test(email) ? email : null;
+}
+
+export function validateSignup(body) {
+  const errors = [];
+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
+  // eslint-disable-next-line no-control-regex
+  if (!name || name.length > 80 || /[\u0000-\u001f]/.test(name)) errors.push('Enter your name (up to 80 characters)');
+  const email = checkEmail(body?.email);
+  if (!email) errors.push('Enter a valid email address');
+  const password = body?.password;
+  if (typeof password !== 'string' || password.length < PASSWORD_MIN || password.length > PASSWORD_MAX) {
+    errors.push(`Password must be ${PASSWORD_MIN}-${PASSWORD_MAX} characters`);
+  }
+  return { value: errors.length ? null : { name, email, password }, errors };
+}
+
+export function validateLogin(body) {
+  const email = checkEmail(body?.email);
+  const password = body?.password;
+  if (!email || typeof password !== 'string' || !password || password.length > PASSWORD_MAX) {
+    return { value: null, errors: ['Enter your email and password'] };
+  }
+  return { value: { email, password }, errors: [] };
+}

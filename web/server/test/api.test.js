@@ -1,35 +1,24 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { createApp } from '../src/app.js';
-import { connectDb, seedAssetsIfEmpty } from '../src/db.js';
+import { connectDb } from '../src/db.js';
+import { ensureIndexes } from '../src/models.js';
+import { Client, newAsset, PASSWORD } from './helpers.js';
 
 let db;
 let server;
 let base;
-
-async function http(method, path, body) {
-  const res = await fetch(base + path, {
-    method,
-    headers: { 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await res.text();
-  return { status: res.status, body: text ? JSON.parse(text) : null };
-}
-
-const newAsset = (over = {}) => ({
-  id: 'T01', name: 'Test archive', category: 'Test', protocol: 'TLS 1.2',
-  key_establishment: 'RSA-KT', signature: 'RSA-SIG', symmetric: 'AES-256', hash: 'SHA-256',
-  forward_secrecy: false, confidentiality_years: 30, integrity_years: 0, migration_years: 6,
-  sensitivity: 'restricted', exposure: 'internet', migration_difficulty: 'high', link_type: 'internet',
-  notes: 'created by the API test', ...over,
-});
+let user; // every request in this file is made as one signed-in user
+const http = (method, path, body) => user.request(method, path, body);
 
 before(async () => {
   db = await connectDb({ persist: false, allowEnvUri: false }); // tests never touch a real MONGODB_URI
-  await seedAssetsIfEmpty();
+  await ensureIndexes();
   server = createApp().listen(0);
   base = `http://127.0.0.1:${server.address().port}/api`;
+  user = new Client(base);
+  const r = await user.request('POST', '/auth/signup', { name: 'Alice Test', email: 'alice@example.com', password: PASSWORD });
+  assert.equal(r.status, 201);
 });
 
 after(async () => {
@@ -180,5 +169,22 @@ describe('experiments A-D (background job)', () => {
 
   it('validates parameters', async () => {
     assert.equal((await http('POST', '/experiments/run', { n_qubits: 5 })).status, 422);
+  });
+});
+
+describe('pilot-list sign-up', () => {
+  it('stores a valid email once and reports duplicates without erroring', async () => {
+    const first = await http('POST', '/subscribe', { email: 'Person@Example.com ' });
+    assert.equal(first.status, 201);
+    assert.equal(first.body.already, false);
+    const again = await http('POST', '/subscribe', { email: 'person@example.com' });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.already, true);
+  });
+
+  it('rejects invalid emails and never echoes stored addresses', async () => {
+    assert.equal((await http('POST', '/subscribe', { email: 'not-an-email' })).status, 422);
+    assert.equal((await http('POST', '/subscribe', {})).status, 422);
+    assert.equal((await http('GET', '/subscribe')).status, 404);
   });
 });

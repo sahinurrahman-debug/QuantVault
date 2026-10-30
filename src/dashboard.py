@@ -103,6 +103,15 @@ def build_dashboard(grid: pd.DataFrame, eve_sweep: pd.DataFrame, n_qubits: int,
               BB84Config(n_qubits=demo_qubits, noise_model="depolarizing", noise_p=0.03, seed=13)),
     ]
 
+    from .channel import run_quantum_safe_channel
+    from .report import generate_board_report
+
+    channel_demos = {
+        "clean": run_quantum_safe_channel(spy=False, seed=42),
+        "spy": run_quantum_safe_channel(spy=True, seed=42),
+    }
+    board_report = generate_board_report(inventory=inv, cfg=base_cfg)
+
     data = {
         "organisation": inv["organisation"], "default": int(base_cfg.threat_horizon_years),
         "scenarios": THREAT_SCENARIOS, "qlabels": QCLASS_LABELS,
@@ -115,6 +124,15 @@ def build_dashboard(grid: pd.DataFrame, eve_sweep: pd.DataFrame, n_qubits: int,
         },
         "comparison": COMPARISON_ROWS, "workflow_pqc": WORKFLOW_PQC, "workflow_qkd": WORKFLOW_QKD,
         "priorities": PRIORITIES, "limitations": MODEL_LIMITATIONS,
+        "channel_demos": channel_demos,
+        "board_report": {
+            "markdown_content": board_report["markdown_content"],
+            "html_path": "board_migration_report.html",
+            "md_path": "board_migration_report.md",
+            "total_assets": board_report["total_assets"],
+            "urgent_review": board_report["urgent_review"],
+            "mosca_violated": board_report["mosca_violated"],
+        },
     }
     payload = json.dumps(data, default=float).replace("</", "<\\/")
     html = TEMPLATE.read_text(encoding="utf-8").replace("/*__DATA__*/null", payload)

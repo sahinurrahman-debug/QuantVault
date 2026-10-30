@@ -42,6 +42,8 @@ export const api = {
   resetAssets: () => request('/assets/reset', { method: 'POST' }),
   risk: (horizon) => request(`/risk?horizon=${horizon}`),
   sweep: () => request('/risk/sweep'),
+  boardReport: (horizon) => request(`/risk/report?horizon=${horizon || 15}`),
+  transmitChannel: (spy, qubits, record) => request('/channel/transmit', { method: 'POST', body: { spy, qubits, record } }),
   runQkd: (params) => request('/qkd/run', { method: 'POST', body: params }),
   qkdRuns: () => request('/qkd/runs'),
   clearQkdRuns: () => request('/qkd/runs', { method: 'DELETE' }),

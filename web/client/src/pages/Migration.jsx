@@ -1,10 +1,53 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, TierBadge } from '../components/ui.jsx';
+import { api } from '../api.js';
 
 export default function Migration({ risk, meta, z }) {
+  const [downloading, setDownloading] = useState(false);
   const qkd = risk.results.filter((a) => a.qkd_candidate);
+
+  const handleDownloadReport = async () => {
+    try {
+      setDownloading(true);
+      const res = await api.boardReport(z);
+      if (res && res.markdown_content) {
+        const blob = new Blob([res.markdown_content], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `QuantVault_Executive_Board_Report_Z${z}yr.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      alert(`Failed to generate report: ${err.message}`);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <>
+      <div className="card" style={{ border: '2px solid rgba(167, 139, 250, 0.4)', background: 'rgba(167, 139, 250, 0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h2 style={{ color: '#c4b5fd', margin: '0 0 4px 0' }}>📋 Executive Board Migration Briefing</h2>
+            <p className="lead" style={{ margin: 0 }}>Formal governance migration report for CISO, Audit & Risk Committee, and Board reviews.</p>
+          </div>
+          <button
+            type="button"
+            className="chip"
+            onClick={handleDownloadReport}
+            disabled={downloading}
+            style={{ background: '#7c3aed', color: '#fff', fontWeight: 600, padding: '8px 18px', cursor: 'pointer', border: 'none' }}
+          >
+            {downloading ? 'Generating…' : '📥 Download Board Report (.md)'}
+          </button>
+        </div>
+      </div>
+
       <Card title={`Migration Roadmap at Z = ${z} Years`} lead="Generated from the stored inventory at the selected horizon.">
         {risk.plan.map((p) => (
           <div className="phase" key={p.phase}>

@@ -16,8 +16,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # The engines need only these; the full requirements.txt adds optional add-ons the tests do not use.
-      - run: pip install "qiskit>=1.0,<2.0" "qiskit-aer>=0.15" numpy scipy pandas matplotlib pytest
+          cache: "pip"
+      - run: pip install -r requirements.txt
       - run: python -m pytest -q
 
   server:
@@ -27,13 +27,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: "npm"
+          cache-dependency-path: "web/server/package-lock.json"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install "qiskit>=1.0,<2.0" "qiskit-aer>=0.15" numpy scipy pandas
+          cache: "pip"
+      - run: pip install -r requirements.txt
       - run: npm ci
         working-directory: web/server
-      - run: npm test # finds python3 on PATH, the interpreter the step above installed Qiskit into
+      - run: npm test
         working-directory: web/server
 
   client:
@@ -43,6 +46,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: "npm"
+          cache-dependency-path: "web/client/package-lock.json"
       - run: npm ci
         working-directory: web/client
       - run: npm test

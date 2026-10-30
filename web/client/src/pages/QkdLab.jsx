@@ -218,6 +218,108 @@ function Experiments({ meta }) {
   );
 }
 
+function LiveChannelCard() {
+  const [spy, setSpy] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState(null);
+  const [error, setError] = useState(null);
+
+  const runChannel = async (spyVal) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await api.transmitChannel(spyVal, 2048);
+      setRes(data);
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const isAborted = res?.status === 'ABORTED';
+
+  return (
+    <Card
+      title="Live Quantum-Safe Healthcare Channel (PQC + QKD Tri-Hybrid)"
+      lead="Demonstrates 'QKD supplements PQC, doesn't replace it': Encrypts Eleanor Vance's Electronic Health Record with AES-256-GCM under a tri-hybrid key (X25519 + ML-KEM-768 + QKD)."
+    >
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+        <b>Eavesdropper Interception (Spy):</b>
+        <button
+          type="button"
+          className="chip"
+          onClick={() => { setSpy(false); runChannel(false); }}
+          disabled={busy}
+          style={!spy ? { background: '#10b981', color: '#fff', fontWeight: 600 } : undefined}
+        >
+          Spy OFF (Clean Link)
+        </button>
+        <button
+          type="button"
+          className="chip"
+          onClick={() => { setSpy(true); runChannel(true); }}
+          disabled={busy}
+          style={spy ? { background: '#ef4444', color: '#fff', fontWeight: 600 } : undefined}
+        >
+          Spy ON (Interception)
+        </button>
+        <button
+          type="button"
+          className="btn primary"
+          onClick={() => runChannel(spy)}
+          disabled={busy}
+          style={{ marginLeft: 'auto' }}
+        >
+          {busy ? <Spinner text="Simulating Channel…" /> : 'Transmit Patient Record (Live)'}
+        </button>
+      </div>
+
+      {error && <p className="warn" style={{ color: '#ef4444' }}>{error}</p>}
+
+      {res && (
+        <div style={{ marginTop: 12 }}>
+          {isAborted ? (
+            <div style={{ borderLeft: '4px solid #ef4444', background: 'rgba(239, 68, 68, 0.1)', padding: 14, borderRadius: 8 }}>
+              <b style={{ color: '#ef4444', fontSize: 16 }}>🚨 HARD SECURITY BARRIER ENFORCED (TRANSMISSION ABORTED)</b>
+              <p style={{ margin: '6px 0', fontSize: 14 }}>
+                Observed QBER of <b>{(res.qkd.qber_observed * 100).toFixed(2)}%</b> exceeded the 11.00% security bound.
+                Quantum no-cloning disturbance detected an eavesdropper on the optical link.
+                Key derivation was halted immediately.
+              </p>
+              <div style={{ display: 'flex', gap: 18, marginTop: 8, fontSize: 13 }}>
+                <span><b>Plaintext Leaked:</b> <code style={{ color: '#ef4444', background: '#fff', padding: '2px 6px', borderRadius: 4 }}>0 BYTES</code></span>
+                <span><b>Transmitted Ciphertext:</b> <code>[BLOCKED BY QUANTUM INTERLOCK]</code></span>
+              </div>
+            </div>
+          ) : (
+            <div style={{ borderLeft: '4px solid #10b981', background: 'rgba(16, 185, 129, 0.1)', padding: 14, borderRadius: 8 }}>
+              <b style={{ color: '#10b981', fontSize: 16 }}>🛡️ SECURE ENCRYPTED TRANSMISSION VERIFIED</b>
+              <p style={{ margin: '6px 0', fontSize: 14 }}>
+                Quantum link verified clean (QBER {(res.qkd.qber_observed * 100).toFixed(2)}% &lt; 11.00%).
+                Derived 256-bit AES-GCM session key binding Curve25519, NIST FIPS 203 ML-KEM-768, and QKD secret.
+              </p>
+              <div style={{ fontSize: 13, marginTop: 8 }}>
+                <div><b>AES-GCM Nonce:</b> <code>{res.payload.nonce_hex}</code></div>
+                <div><b>128-bit Auth Tag:</b> <code>{res.payload.tag_hex}</code></div>
+                <div><b>Ciphertext (Hex):</b> <code style={{ wordBreak: 'break-all' }}>{res.payload.ciphertext_hex?.slice(0, 72)}... ({res.payload.ciphertext_hex?.length / 2} bytes)</code></div>
+                <div><b>Bob Verification:</b> <span className="badge m-ok">Integrity Authenticated (0 Errors)</span></div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginTop: 14 }}>
+            <b>Patient Record Payload (Decrypted / Clinical Enclave View):</b>
+            <pre className="mono" style={{ padding: 10, borderRadius: 8, maxHeight: 150, overflowY: 'auto', background: 'rgba(0,0,0,0.2)' }}>
+              {JSON.stringify(res.payload.decrypted_record || { patient_id: res.payload.patient_id, patient_name: res.payload.patient_name, status: "PROTECTED_IN_LOCAL_ENCLAVE" }, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function QkdLab({ meta, run, setRun }) {
   const [runs, setRuns] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -236,6 +338,7 @@ export default function QkdLab({ meta, run, setRun }) {
 
   return (
     <>
+      <LiveChannelCard />
       <Controls onRun={onRun} busy={busy} />
       <ErrorBox error={error} />
       {run && <RunResult run={run} />}

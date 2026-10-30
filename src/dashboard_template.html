@@ -98,6 +98,7 @@ select{font:inherit;padding:5px 8px;border-radius:8px;border:1px solid var(--lin
   <section id="p-prior" class="hide"></section>
   <section id="p-qkd" class="hide"></section>
   <section id="p-migr" class="hide"></section>
+  <section id="p-channel" class="hide"></section>
 </main>
 
 <script>
@@ -106,8 +107,21 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const TIER_CLS = {Critical:"t-crit", High:"t-high", Medium:"t-med", Low:"t-low"};
 const TIER_COL = {Critical:"var(--crit)", High:"var(--high)", Medium:"var(--med)", Low:"var(--low)"};
-const TABS = [["overview","A. Exposure overview"],["prior","B. Risk prioritisation"],["qkd","C. QKD laboratory"],["migr","D. Migration & QKD vs PQC"]];
-const state = {z: D.default, tab: "overview", open: null, model: D.qkd.models[0]};
+const TABS = [["overview","A. Exposure overview"],["prior","B. Risk prioritisation"],["qkd","C. QKD laboratory"],["migr","D. Migration & QKD vs PQC"],["channel","E. Live Quantum-Safe Channel"]];
+const state = {z: D.default, tab: "overview", open: null, model: D.qkd.models[0], channelSpy: false};
+
+function downloadBoardReport(){
+  if (!D.board_report || !D.board_report.markdown_content) return;
+  const blob = new Blob([D.board_report.markdown_content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "QuantVault_Executive_Board_Migration_Report.md";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 const dyn = () => D.dyn[String(state.z)];
 function merged(){
@@ -131,8 +145,12 @@ function renderChrome(){
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => { state.tab = b.dataset.k; renderAll(); });
   $("#zv").textContent = state.z;
   $("#z").value = state.z;
-  $("#scen").innerHTML = Object.entries(D.scenarios).map(([n,z]) => `<button class="chip" data-z="${z}">${n} (${z})</button>`).join(" ");
-  document.querySelectorAll(".chip").forEach(c => c.onclick = () => { state.z = +c.dataset.z; renderAll(); });
+  $("#scen").innerHTML = Object.entries(D.scenarios).map(([n,z]) => `<button class="chip" data-z="${z}">${n} (${z})</button>`).join(" ") +
+    ` <a href="board_migration_report.html" target="_blank" class="chip" style="background:var(--accent);color:#fff;text-decoration:none;font-weight:600;margin-left:8px;">🖨️ Board Report (HTML)</a>` +
+    ` <button class="chip" id="btn-dl-md" style="font-weight:600;">📥 Download Report (.md)</button>`;
+  document.querySelectorAll(".chip[data-z]").forEach(c => c.onclick = () => { state.z = +c.dataset.z; renderAll(); });
+  const dlBtn = $("#btn-dl-md");
+  if (dlBtn) dlBtn.onclick = downloadBoardReport;
   for (const [k] of TABS) $("#p-"+k).classList.toggle("hide", k !== state.tab);
 }
 
@@ -257,7 +275,24 @@ function renderMigr(){
   const cmp = D.comparison.map(r => `<tr><td><b>${esc(r[0])}</b></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td></tr>`).join("");
   const wf = l => `<ol class="clean">${l.map(s => `<li>${esc(s)}</li>`).join("")}</ol>`;
   const qkd = merged().filter(a => a.qkd_candidate);
+
+  const rpt = D.board_report;
+  const reportCard = rpt ? `
+  <div class="card" style="border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 5%,var(--card));">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h2 style="color:var(--accent);">📋 Executive Board Migration Briefing</h2>
+        <p class="lead" style="margin-bottom:0;">Automated, defensible plan ready for CISO, Risk Committee, and Board reviews.</p>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <a href="board_migration_report.html" target="_blank" class="chip" style="background:var(--accent);color:#fff;text-decoration:none;font-weight:600;padding:6px 14px;">🖨️ Printable HTML / PDF</a>
+        <button class="chip" id="btn-dl-md-card" style="font-weight:600;padding:6px 14px;">📥 Download Markdown</button>
+      </div>
+    </div>
+  </div>` : "";
+
   $("#p-migr").innerHTML = `
+  ${reportCard}
   <div class="card"><h2>Migration roadmap at Z = ${state.z} years</h2>
     <p class="lead">Generated from the inventory and the assumptions above, not from a single aggregate score.</p>${phases}</div>
   <div class="card"><h2>Where QKD fits</h2>
@@ -265,11 +300,87 @@ function renderMigr(){
     ${qkd.length ? qkd.map(a => `<p class="warn"><b>${esc(a.name)}:</b> ${esc(a.qkd_reason)}</p>`).join("") : "<p>No asset in this inventory is a QKD candidate.</p>"}</div>
   <div class="card"><h2>QKD vs post-quantum cryptography</h2><div class="scroll"><table><thead><tr><th></th><th>Quantum key distribution</th><th>Post-quantum cryptography</th></tr></thead><tbody>${cmp}</tbody></table></div></div>
   <div class="grid2"><div class="card"><h2>PQC workflow</h2>${wf(D.workflow_pqc)}</div><div class="card"><h2>QKD workflow</h2>${wf(D.workflow_qkd)}</div></div>`;
+
+  const btnCard = $("#btn-dl-md-card");
+  if (btnCard) btnCard.onclick = downloadBoardReport;
+}
+
+/* ---------------------------------------------------------------- E. live channel */
+function renderChannel(){
+  const s = state.channelSpy ? D.channel_demos.spy : D.channel_demos.clean;
+  const isAborted = s.status === "ABORTED";
+  const badge = isAborted
+    ? `<span class="badge" style="background:var(--crit-bg);color:var(--crit);font-size:14px;padding:4px 12px;">🚨 TRANSMISSION ABORTED (SPY DETECTED)</span>`
+    : `<span class="badge" style="background:var(--low-bg);color:var(--low);font-size:14px;padding:4px 12px;">🛡️ SECURE ENCRYPTED TRANSMISSION</span>`;
+
+  $("#p-channel").innerHTML = `
+  <div class="card">
+    <h2>Live Quantum-Safe Healthcare Channel (PQC + QKD Tri-Hybrid)</h2>
+    <p class="lead">Proves the core thesis: <b>QKD supplements PQC; it doesn't replace it</b>. When an eavesdropper intercepts the quantum channel, QBER violates the no-cloning threshold and the protocol immediately aborts—<b>the sensitive patient record never leaves the secure enclave</b>.</p>
+    
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--card);padding:14px;border:1px solid var(--line);border-radius:10px;margin:14px 0;">
+      <b>Quantum Channel Eavesdropper (Spy):</b>
+      <button class="chip" id="btn-spy-off" style="${!state.channelSpy?'background:var(--low);color:#fff;font-weight:600;':''}">Spy OFF (Clean Fiber)</button>
+      <button class="chip" id="btn-spy-on" style="${state.channelSpy?'background:var(--crit);color:#fff;font-weight:600;':''}">Spy ON (Active Interception)</button>
+      <div style="margin-left:auto;">${badge}</div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Step 1 & 2: Quantum & Post-Quantum Key Agreement</h2>
+      <p class="lead">Alice & Bob negotiate keys over both optical fiber (QKD) and standard network (ML-KEM-768).</p>
+      <table>
+        <tr><th>Channel Parameter</th><th>Value</th><th>Status</th></tr>
+        <tr><td>QKD Observed QBER</td><td><b>${(s.qkd.qber_observed*100).toFixed(2)}%</b></td><td>${s.qkd.qber_observed < s.qkd.qber_threshold ? '<span class="badge m-ok">Below 11% Bound</span>' : '<span class="badge m-violated">VIOLATED (&gt;11%)</span>'}</td></tr>
+        <tr><td>QKD Key Status</td><td>${s.qkd.accepted ? 'Accepted (Pristine)' : 'ABORTED (State Collapsed)'}</td><td>${s.qkd.accepted ? 'Shared Secret Bound' : '0 Bits Generated'}</td></tr>
+        <tr><td>PQC Algorithm</td><td>NIST FIPS 203 ML-KEM-768</td><td><span class="badge m-ok">Standardized Lattice</span></td></tr>
+        <tr><td>Classical KEM</td><td>Curve25519 (X25519 ECDH)</td><td><span class="badge m-ok">Constant-Time C</span></td></tr>
+        <tr><td>Tri-Hybrid KDF</td><td>HKDF-SHA256(X25519 || ML-KEM || QKD)</td><td>${isAborted ? '<span class="badge m-violated">HALTED</span>' : '<span class="badge m-ok">256-bit Session Key</span>'}</td></tr>
+      </table>
+      <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:8px;font-size:13px;">
+        <b>Defense-in-depth:</b> ${esc(s.defense_summary)}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Step 3 & 4: Live Patient Record Encryption (AES-256-GCM)</h2>
+      <p class="lead">Sample clinical payload: Eleanor Vance (MRN-2026-98412) &middot; Oncology Trial &middot; X = 30 yr confidentiality.</p>
+      
+      ${isAborted ? `
+      <div style="border-left:4px solid var(--crit);background:var(--crit-bg);color:var(--crit);padding:14px;border-radius:6px;font-size:14px;">
+        <b>🚨 HARD SECURITY BARRIER ENFORCED:</b><br>
+        Because quantum disturbance revealed an active eavesdropper on the optical fiber, key derivation was immediately aborted.
+        The plaintext patient record <b>NEVER left the local clinical memory</b>.
+        <br><br>
+        <b>Plaintext Leakage:</b> <code style="font-size:15px;background:#fff;padding:2px 6px;border-radius:4px;color:#c53030;">0 BYTES</code>
+        <br>
+        <b>Transmitted Ciphertext:</b> <code>[BLOCKED BY QUANTUM INTERLOCK]</code>
+      </div>` : `
+      <div style="border-left:4px solid var(--low);background:var(--low-bg);color:var(--low);padding:14px;border-radius:6px;font-size:14px;">
+        <b>🛡️ AUTHENTICATED TRANSMISSION SUCCESS:</b><br>
+        Session key derived from QKD + ML-KEM-768. Record encrypted with AES-256-GCM.
+        <br><br>
+        <b>AES-GCM Nonce:</b> <code>${s.payload.nonce_hex}</code><br>
+        <b>Authentication Tag:</b> <code>${s.payload.tag_hex}</code><br>
+        <b>Encrypted Ciphertext:</b> <code style="word-break:break-all;">${s.payload.ciphertext_hex.slice(0, 64)}... (${s.payload.ciphertext_hex.length/2} bytes)</code><br>
+        <b>Receiver Verification:</b> Integrity verified &middot; 0 residual errors.
+      </div>`}
+      
+      <div style="margin-top:14px;">
+        <b>Patient Record Payload (Decrypted / Enclave View):</b>
+        <pre class="mono" style="background:var(--bg);padding:10px;border-radius:8px;max-height:160px;overflow-y:auto;">${esc(JSON.stringify(s.payload.decrypted_record || D.channel_demos.clean.payload.decrypted_record, null, 2))}</pre>
+      </div>
+    </div>
+  </div>`;
+
+  $("#btn-spy-off").onclick = () => { state.channelSpy = false; renderChannel(); };
+  $("#btn-spy-on").onclick = () => { state.channelSpy = true; renderChannel(); };
 }
 
 let qkdDrawn = false;
 function renderAll(){
-  renderChrome(); renderOverview(); renderPrior(); renderMigr();
+  renderChrome(); renderOverview(); renderPrior(); renderMigr(); renderChannel();
   if (!qkdDrawn) { renderQKD(); qkdDrawn = true; }  // QKD results do not depend on Z
 }
 $("#z").addEventListener("input", e => { state.z = +e.target.value; renderAll(); });

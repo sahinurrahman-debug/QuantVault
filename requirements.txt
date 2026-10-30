@@ -1,21 +1,15 @@
-# Core quantum SDK
-qiskit>=1.0,<2.0
-qiskit-ibm-runtime>=0.30
+# Core quantum SDK & IBM runtime
+qiskit==1.4.6
+qiskit-ibm-runtime==0.44.1
 
 # Local simulator
-qiskit-aer>=0.15
-
-# Optional add-ons -- remove the ones you do not use
-qiskit-algorithms>=0.3
-qiskit-optimization>=0.6
-qiskit-nature>=0.7
+qiskit-aer==0.18.0
 
 # Numerics, data and plotting
-numpy>=1.26
-scipy>=1.11
-pandas>=2.1
-matplotlib>=3.8
-scikit-learn>=1.4
+numpy==2.5.4
+scipy==1.18.1
+pandas==3.0.6
+matplotlib==3.11.2
 
 # Testing
-pytest>=8.0
+pytest==9.1.1

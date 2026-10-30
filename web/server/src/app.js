@@ -193,6 +193,20 @@ export function createApp({ clientDist = config.clientDist, limits = config.limi
     res.json(await callPython({ cmd: 'sweep', assets }, { userId: req.user.id }));
   }));
 
+  api.get('/risk/report', limitByUser(riskLimiter, 'risk assessments'), ah(async (req, res) => {
+    const { value: horizon } = validateHorizon(req.query.horizon);
+    const assets = await currentAssets(req.user.id);
+    res.json(await callPython({ cmd: 'report', assets, horizon: horizon || 15 }, { userId: req.user.id }));
+  }));
+
+  // ---- live quantum-safe channel
+  api.post('/channel/transmit', limitByUser(qkdLimiter, 'QKD simulations'), ah(async (req, res) => {
+    const spy = Boolean(req.body.spy);
+    const qubits = Number(req.body.qubits) || 2048;
+    const record = req.body.record || null;
+    res.json(await callPython({ cmd: 'channel', spy, qubits, record }, { userId: req.user.id }));
+  }));
+
   // ---- QKD
   api.post('/qkd/run', limitByUser(qkdLimiter, 'QKD simulations'), ah(async (req, res) => {
     const { value, errors } = validateQkd(req.body);

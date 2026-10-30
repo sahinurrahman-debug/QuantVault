@@ -1,0 +1,78 @@
+{
+  "backend": "FakeMarrakesh (156-qubit IBM Heron model)",
+  "job_id": "qv-e91-c56c3db8bbc7",
+  "timestamp": "2026-10-30T09:40:20.722843+00:00",
+  "eve_enabled": false,
+  "eve_fraction": 1.0,
+  "shots_per_setting": 4000,
+  "settings": {
+    "A0_B0": {
+      "theta_a": 0.0,
+      "theta_b": 0.7853981633974483,
+      "e_val": 0.696,
+      "std_err": 0.0114,
+      "counts": {
+        "10": 310,
+        "11": 1725,
+        "00": 1667,
+        "01": 298
+      }
+    },
+    "A0_B1": {
+      "theta_a": 0.0,
+      "theta_b": -0.7853981633974483,
+      "e_val": 0.6725,
+      "std_err": 0.0117,
+      "counts": {
+        "11": 1653,
+        "00": 1692,
+        "10": 323,
+        "01": 332
+      }
+    },
+    "A1_B0": {
+      "theta_a": 1.5707963267948966,
+      "theta_b": 0.7853981633974483,
+      "e_val": 0.703,
+      "std_err": 0.0112,
+      "counts": {
+        "00": 1660,
+        "11": 1746,
+        "10": 260,
+        "01": 334
+      }
+    },
+    "A1_B1": {
+      "theta_a": 1.5707963267948966,
+      "theta_b": -0.7853981633974483,
+      "e_val": -0.7085,
+      "std_err": 0.0112,
+      "counts": {
+        "00": 292,
+        "10": 1669,
+        "11": 291,
+        "01": 1748
+      }
+    }
+  },
+  "s_value": 2.78,
+  "s_std_err": 0.0227,
+  "ci_95": [
+    2.7354,
+    2.8246
+  ],
+  "sigma_above_classical": 34.31,
+  "violates_bell": true,
+  "verdict": "ACCEPTED: Bell violation verified (S=2.780 > 2.0, 34.3 sigma above classical bound). Genuine entanglement certified.",
+  "key_shots": 4000,
+  "key_counts": {
+    "11": 1975,
+    "00": 1980,
+    "01": 24,
+    "10": 21
+  },
+  "qber_key": 0.0112,
+  "key_accepted": true,
+  "final_key_hex": "31d24702ac8550d4894c52aa470aac0e",
+  "notes": "Device-independent Bell test directly eliminates classical simulation / RNG masquerading."
+}

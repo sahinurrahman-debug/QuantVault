@@ -32,6 +32,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
+
 from .algorithms import (
     HASH, KEY_ESTABLISHMENT, SIGNATURE, SYMMETRIC, QCLASS_LABELS, lookup,
 )
@@ -118,15 +120,58 @@ def _is_vulnerable_or_unknown(mech: dict) -> str | None:
     return None
 
 
-def _mosca(x: float, y: float, z: float, verdict: str | None) -> dict:
-    """One Mosca check. ``verdict`` is 'vulnerable', 'unknown' or None."""
-    margin = x + y - z
+def _probabilistic_mosca(
+    x: float,
+    y: float,
+    verdict: str | None,
+    n_trials: int = 10000,
+    seed: int = 42,
+) -> dict[str, Any]:
+    """Monte Carlo evaluation of Mosca's inequality X + Y > Z under expert survey distributions.
+
+    Rather than assuming a single static break year Z, we draw:
+    - Z ~ Weibull(shape=2.5, scale=16.5) reflecting the Global Risk Institute (GRI)
+      expert survey consensus: ~22% CRQC by 10 yr, ~54% by 15 yr, ~80% by 20 yr.
+    - X ~ Triangular(0.85*X, X, 1.25*X) reflecting data shelf-life uncertainty.
+    - Y ~ Triangular(0.85*Y, Y, 1.40*Y) reflecting enterprise migration duration overruns.
+
+    Returns P(violation) = P(X + Y > Z) in [0.0, 1.0].
+    """
     if verdict is None or x <= 0:
-        return {"status": "not_applicable", "x": x, "y": y, "z": z, "margin": margin}
+        return {"status": "not_applicable", "p_violation": 0.0, "x": x, "y": y}
+
+    rng = np.random.default_rng(seed)
+    z_samples = rng.weibull(2.5, size=n_trials) * 16.5
+    x_samples = rng.triangular(0.85 * x, x, 1.25 * x, size=n_trials) if x > 0 else np.zeros(n_trials)
+    y_samples = rng.triangular(0.85 * y, y, 1.40 * y, size=n_trials) if y > 0 else np.zeros(n_trials)
+
+    violations = (x_samples + y_samples) > z_samples
+    p_violation = float(np.mean(violations))
+
+    status = "violated" if p_violation > 0.50 else "ok"
+    if verdict == "unknown":
+        status = "indeterminate"
+
+    return {
+        "status": status,
+        "p_violation": round(p_violation, 3),
+        "x_mean": round(float(np.mean(x_samples)), 1),
+        "y_mean": round(float(np.mean(y_samples)), 1),
+        "z_median": round(float(np.median(z_samples)), 1),
+    }
+
+
+def _mosca(x: float, y: float, z: float, verdict: str | None) -> dict:
+    """Mosca check combining deterministic margin with Monte Carlo probability of violation."""
+    margin = x + y - z
+    prob = _probabilistic_mosca(x, y, verdict)
+    if verdict is None or x <= 0:
+        return {"status": "not_applicable", "x": x, "y": y, "z": z, "margin": margin, "p_violation": 0.0}
     if verdict == "unknown":
         return {"status": "indeterminate", "x": x, "y": y, "z": z, "margin": margin,
-                "violated_if_vulnerable": margin > 0}
-    return {"status": "violated" if margin > 0 else "ok", "x": x, "y": y, "z": z, "margin": margin}
+                "violated_if_vulnerable": margin > 0, "p_violation": prob["p_violation"]}
+    return {"status": "violated" if margin > 0 else "ok", "x": x, "y": y, "z": z, "margin": margin,
+            "p_violation": prob["p_violation"]}
 
 
 def analyse_asset(asset: dict, cfg: RiskConfig | None = None) -> dict:
@@ -207,10 +252,10 @@ def analyse_asset(asset: dict, cfg: RiskConfig | None = None) -> dict:
             names = ", ".join(m["id"] for m in legacy)
             reasons.append(f"Raised to Medium because classically weak algorithms are in use ({names}).")
 
-    # The displayed score always agrees with the tier: rules can lift or cap an asset, so the score is moved into the
-    # tier's range. The raw weighted score is kept alongside.
+    # The raw weighted score represents mathematical risk. Tier rules provide qualitative
+    # categorization (Mosca, unknowns). Both are preserved transparently.
     lo, hi = _tier_bounds(tier, cfg)
-    R_shown = min(max(R, lo), hi)
+    R_clamped = min(max(R, lo), hi)
 
     qkd_candidate, qkd_reason = _qkd_candidate(asset, x_eff, ke, sig)
 
@@ -225,11 +270,15 @@ def analyse_asset(asset: dict, cfg: RiskConfig | None = None) -> dict:
             "migration_difficulty": asset["migration_difficulty"],
         },
         "components": {"C": round(C, 3), "Q": round(Q, 3), "E": round(E, 3), "M": round(M, 3)},
-        "risk_score": round(R_shown, 1), "risk_score_raw": round(R, 1), "score_adjusted": abs(R_shown - R) > 0.05,
+        "risk_score": round(R, 1),
+        "risk_score_raw": round(R, 1),
+        "risk_score_clamped": round(R_clamped, 1),
+        "score_adjusted": abs(R_clamped - R) > 0.05,
         "security_exposure": round(exposure_score, 1),
         "classical_weakness": legacy, "data_warnings": warnings,
         "tier": tier, "tier_reasons": reasons,
         "mosca": {"status": mosca_status, "margin": mosca_margin,
+                  "p_violation": max(mosca_conf.get("p_violation", 0.0), mosca_auth.get("p_violation", 0.0)),
                   "confidentiality": mosca_conf, "authenticity": mosca_auth,
                   # unknown crypto whose window would be violated if it turns out to be vulnerable
                   "possible_violation": mosca_status == "indeterminate"
@@ -255,16 +304,27 @@ def _tier_from_score(score: float, cfg: RiskConfig) -> str:
 
 
 def _qkd_candidate(asset: dict, x_eff: float, ke: dict, sig: dict) -> tuple[bool, str]:
-    """QKD is only worth evaluating for fixed, authenticated point-to-point links."""
+    """QKD is evaluated quantitatively for dedicated point-to-point fibre links."""
     if asset.get("link_type") != "dedicated_fibre_p2p":
         return False, "Not a dedicated point-to-point fibre link: post-quantum cryptography is the practical option."
     if x_eff < 10:
         return False, "Dedicated fibre, but the confidentiality lifetime does not justify QKD hardware."
     if ke["qclass"] not in ("shor_vulnerable", "unknown"):
         return False, "Key establishment is already post-quantum or hybrid."
-    return True, ("Fixed dedicated fibre with long-lived data: evaluate QKD as a supplement to, "
-                  "not a replacement for, post-quantum cryptography. Needs authenticated classical "
-                  "channel, trusted endpoints and a hardware/vendor assessment.")
+
+    dist = float(asset.get("distance_km", 40.0))
+    from .qkd_calc import evaluate_link_feasibility
+    feas = evaluate_link_feasibility(dist)
+
+    if feas.is_viable_unrepeatered:
+        return True, (
+            f"QKD is quantitatively viable on this {dist:g} km dedicated fibre link at "
+            f"{feas.secret_key_rate_kbps:.1f} kbit/s as a physical supplement to PQC (ML-KEM-768)."
+        )
+    return False, (
+        f"Direct QKD is infeasible on this {dist:g} km link (exceeds {feas.max_unrepeatered_distance_km:.0f} km "
+        f"unrepeatered limit; requires {feas.trusted_relays_needed} trusted relays). Post-quantum cryptography is recommended."
+    )
 
 
 def recommend(asset: dict, res: dict) -> list[dict]:
@@ -436,3 +496,83 @@ def _migrate_task(r: dict) -> str:
 
 def label_for(qclass: str) -> str:
     return QCLASS_LABELS.get(qclass, qclass)
+
+
+def weight_sensitivity_analysis(
+    inventory: dict | None = None,
+    base_cfg: RiskConfig | None = None,
+    n_samples: int = 1000,
+    perturbation: float = 0.30,
+    seed: int = 42,
+) -> dict:
+    """Assess whether risk ranking is robust against arbitrary weight choices.
+
+    Perturbs each component weight (C, Q, E, M) uniformly within +/- 30% of base value,
+    re-ranks the inventory for each trial, and measures:
+    1. Kendall tau rank correlation against the baseline ranking.
+    2. Stability of the top-5 highest-priority assets (retention rate).
+    """
+    import math
+    from scipy.stats import kendalltau
+
+    inventory = inventory or load_inventory()
+    base_cfg = base_cfg or RiskConfig()
+    base_results = analyse_inventory(inventory, base_cfg)
+    base_ids = [r["id"] for r in base_results]
+    base_ranks = {r["id"]: r["rank"] for r in base_results}
+    base_top5 = set(base_ids[:5])
+
+    rng = np.random.default_rng(seed)
+    tau_values: list[float] = []
+    top5_preserved_count = 0
+    top5_overlaps: list[float] = []
+
+    w_keys = ["C", "Q", "E", "M"]
+    base_w = np.array([base_cfg.weights[k] for k in w_keys], dtype=float)
+
+    for _ in range(n_samples):
+        # Multiplicative jitter in [1 - perturbation, 1 + perturbation]
+        factors = rng.uniform(1.0 - perturbation, 1.0 + perturbation, size=len(w_keys))
+        w_perturbed = base_w * factors
+        w_perturbed /= w_perturbed.sum()  # Re-normalize to sum to 1.0
+
+        trial_cfg = RiskConfig(
+            threat_horizon_years=base_cfg.threat_horizon_years,
+            weights={k: float(w_perturbed[i]) for i, k in enumerate(w_keys)},
+            x_max_years=base_cfg.x_max_years,
+            y_max_years=base_cfg.y_max_years,
+            tier_critical=base_cfg.tier_critical,
+            tier_high=base_cfg.tier_high,
+            tier_medium=base_cfg.tier_medium,
+            low_q_cap=base_cfg.low_q_cap,
+        )
+        trial_results = analyse_inventory(inventory, trial_cfg)
+        trial_ids = [r["id"] for r in trial_results]
+
+        # Kendall tau between baseline ranks and trial ranks
+        trial_rank_vec = [r["rank"] for r in trial_results]
+        base_rank_vec = [base_ranks[r["id"]] for r in trial_results]
+        tau, _ = kendalltau(base_rank_vec, trial_rank_vec)
+        if not math.isnan(tau):
+            tau_values.append(float(tau))
+
+        trial_top5 = set(trial_ids[:5])
+        overlap = len(base_top5.intersection(trial_top5))
+        top5_overlaps.append(overlap / 5.0)
+        if overlap == 5:
+            top5_preserved_count += 1
+
+    mean_tau = float(np.mean(tau_values)) if tau_values else 1.0
+    p05_tau, p95_tau = float(np.percentile(tau_values, 5)), float(np.percentile(tau_values, 95))
+    top5_stability = top5_preserved_count / n_samples
+    mean_top5_overlap = float(np.mean(top5_overlaps))
+
+    return {
+        "n_samples": n_samples,
+        "perturbation_pct": round(perturbation * 100, 1),
+        "mean_kendall_tau": round(mean_tau, 4),
+        "ci_95_tau": (round(p05_tau, 4), round(p95_tau, 4)),
+        "top5_exact_match_rate": round(top5_stability, 4),
+        "mean_top5_overlap_pct": round(mean_top5_overlap * 100, 1),
+        "robust": bool(mean_tau > 0.80 and mean_top5_overlap > 0.80),
+    }

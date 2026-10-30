@@ -1,0 +1,78 @@
+{
+  "backend": "AerSimulator (Ideal)",
+  "job_id": "qv-e91-25520c79ce68",
+  "timestamp": "2026-10-30T09:51:39.345577+00:00",
+  "eve_enabled": true,
+  "eve_fraction": 1.0,
+  "shots_per_setting": 2000,
+  "settings": {
+    "A0_B0": {
+      "theta_a": 0.0,
+      "theta_b": 0.7853981633974483,
+      "e_val": 0.382,
+      "std_err": 0.0207,
+      "counts": {
+        "00": 695,
+        "11": 687,
+        "10": 335,
+        "01": 283
+      }
+    },
+    "A0_B1": {
+      "theta_a": 0.0,
+      "theta_b": -0.7853981633974483,
+      "e_val": 0.355,
+      "std_err": 0.0209,
+      "counts": {
+        "00": 675,
+        "11": 680,
+        "10": 312,
+        "01": 333
+      }
+    },
+    "A1_B0": {
+      "theta_a": 1.5707963267948966,
+      "theta_b": 0.7853981633974483,
+      "e_val": 0.339,
+      "std_err": 0.021,
+      "counts": {
+        "11": 691,
+        "01": 328,
+        "00": 648,
+        "10": 333
+      }
+    },
+    "A1_B1": {
+      "theta_a": 1.5707963267948966,
+      "theta_b": -0.7853981633974483,
+      "e_val": -0.357,
+      "std_err": 0.0209,
+      "counts": {
+        "11": 328,
+        "00": 315,
+        "10": 696,
+        "01": 661
+      }
+    }
+  },
+  "s_value": 1.433,
+  "s_std_err": 0.0417,
+  "ci_95": [
+    1.3512,
+    1.5148
+  ],
+  "sigma_above_classical": -13.58,
+  "violates_bell": false,
+  "verdict": "ABORTED: Bell inequality not violated (S=1.433 <= 2.0). Entanglement broken by eavesdropper or severe noise.",
+  "key_shots": 1000,
+  "key_counts": {
+    "11": 358,
+    "00": 398,
+    "10": 140,
+    "01": 104
+  },
+  "qber_key": 0.244,
+  "key_accepted": false,
+  "final_key_hex": "",
+  "notes": "Device-independent Bell test directly eliminates classical simulation / RNG masquerading."
+}

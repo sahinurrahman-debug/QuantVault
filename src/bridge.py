@@ -133,7 +133,33 @@ def cmd_experiments(req: dict) -> dict:
             "runs": int(len(grid) + len(sweep))}
 
 
-COMMANDS = {"meta": cmd_meta, "risk": cmd_risk, "sweep": cmd_sweep, "qkd": cmd_qkd, "experiments": cmd_experiments}
+def cmd_channel(req: dict) -> dict:
+    from .channel import run_quantum_safe_channel
+
+    spy = bool(req.get("spy", False))
+    qubits = int(req.get("qubits", 2048))
+    record = req.get("record", None)
+    return run_quantum_safe_channel(spy=spy, qkd_qubits=qubits, record=record)
+
+
+def cmd_report(req: dict) -> dict:
+    from .report import generate_board_report
+
+    cfg = _config(req)
+    assets = req.get("assets")
+    inv = {"assets": assets} if assets else None
+    return generate_board_report(inventory=inv, cfg=cfg)
+
+
+COMMANDS = {
+    "meta": cmd_meta,
+    "risk": cmd_risk,
+    "sweep": cmd_sweep,
+    "qkd": cmd_qkd,
+    "experiments": cmd_experiments,
+    "channel": cmd_channel,
+    "report": cmd_report,
+}
 
 
 def main() -> int:

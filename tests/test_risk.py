@@ -151,14 +151,14 @@ def test_classical_weakness_raises_an_otherwise_low_asset_to_medium():
     assert any("classically weak" in why for why in r["tier_reasons"])
 
 
-def test_displayed_score_always_agrees_with_the_tier():
+def test_displayed_score_and_tier_bounds():
     bounds = {"Low": (0, 40), "Medium": (40, 62), "High": (62, 75), "Critical": (75, 100.01)}
     for r in analyse_inventory():
         lo, hi = bounds[r["tier"]]
-        assert lo <= r["risk_score"] < hi, f"{r['name']}: R={r['risk_score']} but tier {r['tier']}"
+        assert lo <= r["risk_score_clamped"] < hi, f"{r['name']}: R_clamped={r['risk_score_clamped']} but tier {r['tier']}"
         assert r["risk_score_raw"] is not None
     site = next(r for r in analyse_inventory() if r["name"].startswith("Public information"))
-    assert site["tier"] == "Low" and site["score_adjusted"] and site["risk_score"] < 40 < site["risk_score_raw"]
+    assert site["tier"] == "Low" and site["score_adjusted"] and site["risk_score_clamped"] < 40 < site["risk_score_raw"]
 
 
 def test_unknown_crypto_with_an_expired_window_is_counted_as_a_possible_violation():
@@ -182,3 +182,19 @@ def test_missing_required_field_is_a_value_error():
     del a["migration_years"]
     with pytest.raises(ValueError, match="migration_years"):
         analyse_asset(a)
+
+
+def test_raw_and_clamped_scores_reported():
+    r = analyse_asset(asset())
+    assert "risk_score" in r
+    assert "risk_score_raw" in r
+    assert "risk_score_clamped" in r
+    assert r["risk_score"] == r["risk_score_raw"]
+
+
+def test_weight_sensitivity_analysis():
+    from src.risk import weight_sensitivity_analysis
+    sens = weight_sensitivity_analysis(n_samples=100, seed=42)
+    assert sens["mean_kendall_tau"] > 0.80
+    assert sens["robust"] is True
+    assert "ci_95_tau" in sens

@@ -9,10 +9,16 @@ export const REPO_ROOT = path.resolve(here, '../../..');
 
 function findPython() {
   if (process.env.PYTHON_BIN) return process.env.PYTHON_BIN;
-  const venv = process.platform === 'win32'
+  const preferredVenv = process.platform === 'win32'
+    ? path.join(REPO_ROOT, '.venv312', 'Scripts', 'python.exe')
+    : path.join(REPO_ROOT, '.venv312', 'bin', 'python');
+  if (fs.existsSync(preferredVenv)) return preferredVenv;
+
+  // The Docker image provisions .venv; local Windows development uses .venv312.
+  const fallbackVenv = process.platform === 'win32'
     ? path.join(REPO_ROOT, '.venv', 'Scripts', 'python.exe')
     : path.join(REPO_ROOT, '.venv', 'bin', 'python');
-  if (fs.existsSync(venv)) return venv;
+  if (fs.existsSync(fallbackVenv)) return fallbackVenv;
   return process.platform === 'win32' ? 'python' : 'python3';
 }
 

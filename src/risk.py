@@ -33,6 +33,8 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
+from typing import Any
+
 import numpy as np
 
 from .algorithms import (
@@ -530,7 +532,8 @@ def weight_sensitivity_analysis(
     base_results = analyse_inventory(inventory, base_cfg)
     base_ids = [r["id"] for r in base_results]
     base_ranks = {r["id"]: r["rank"] for r in base_results}
-    base_top5 = set(base_ids[:5])
+    top_k = min(5, len(base_ids))  # an inventory smaller than five assets has a smaller "top five"
+    base_top = set(base_ids[:top_k])
 
     rng = np.random.default_rng(seed)
     tau_values: list[float] = []
@@ -562,18 +565,19 @@ def weight_sensitivity_analysis(
         # Kendall tau between baseline ranks and trial ranks
         trial_rank_vec = [r["rank"] for r in trial_results]
         base_rank_vec = [base_ranks[r["id"]] for r in trial_results]
-        tau, _ = kendalltau(base_rank_vec, trial_rank_vec)
-        if not math.isnan(tau):
-            tau_values.append(float(tau))
+        if len(trial_rank_vec) >= 2:
+            tau, _ = kendalltau(base_rank_vec, trial_rank_vec)
+            if not math.isnan(tau):
+                tau_values.append(float(tau))
 
-        trial_top5 = set(trial_ids[:5])
-        overlap = len(base_top5.intersection(trial_top5))
-        top5_overlaps.append(overlap / 5.0)
-        if overlap == 5:
+        overlap = len(base_top.intersection(trial_ids[:top_k]))
+        top5_overlaps.append(overlap / top_k if top_k else 1.0)
+        if overlap == top_k:
             top5_preserved_count += 1
 
+    # With fewer than two assets there is no ranking to disturb, so the correlation is 1 by convention.
     mean_tau = float(np.mean(tau_values)) if tau_values else 1.0
-    p05_tau, p95_tau = float(np.percentile(tau_values, 5)), float(np.percentile(tau_values, 95))
+    lo_tau, hi_tau = (float(np.percentile(tau_values, 2.5)), float(np.percentile(tau_values, 97.5))) if tau_values else (1.0, 1.0)
     top5_stability = top5_preserved_count / n_samples
     mean_top5_overlap = float(np.mean(top5_overlaps))
 
@@ -581,7 +585,7 @@ def weight_sensitivity_analysis(
         "n_samples": n_samples,
         "perturbation_pct": round(perturbation * 100, 1),
         "mean_kendall_tau": round(mean_tau, 4),
-        "ci_95_tau": (round(p05_tau, 4), round(p95_tau, 4)),
+        "ci_95_tau": (round(lo_tau, 4), round(hi_tau, 4)),
         "top5_exact_match_rate": round(top5_stability, 4),
         "mean_top5_overlap_pct": round(mean_top5_overlap * 100, 1),
         "robust": bool(mean_tau > 0.80 and mean_top5_overlap > 0.80),

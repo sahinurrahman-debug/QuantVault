@@ -44,7 +44,7 @@ export const config = {
   // Public demo account for reviewers (credentials are shown on the sign-in page). Disable with DEMO_ACCOUNT=false.
   // Per-user and per-IP budgets that keep one visitor from using up the server.
   limits: {
-    qkdPerHour: 40, experimentsPerHour: 8, riskPer15Min: 1500,
+    qkdPerHour: 40, experimentsPerHour: 8, reportsPerHour: 30, riskPer15Min: 1500,
     signupsPerHourPerIp: Number(process.env.RL_SIGNUPS_PER_HOUR) || 10,
     failuresPer15MinPerIp: Number(process.env.RL_FAILURES_PER_15MIN) || 60,
     keepQkdRuns: 50, keepExperiments: 5, maxSessionsPerUser: 10,

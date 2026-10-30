@@ -39,9 +39,10 @@ Theoretical foundation
 from __future__ import annotations
 
 import json
+import os
 import math
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,17 @@ from qiskit_aer import AerSimulator
 
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = ROOT / "results"
+
+
+KEY_NOTE = (
+    "E91 here certifies the channel (Bell test plus key-basis QBER). It does not extract a secret key; "
+    "reconciliation and privacy amplification are implemented in the BB84 pipeline."
+)
+
+
+def results_dir() -> Path:
+    """Where result artifacts are written; QUANTVAULT_RESULTS_DIR redirects it (the tests use a temp folder)."""
+    return Path(os.environ.get("QUANTVAULT_RESULTS_DIR") or RESULTS_DIR)
 
 # Standard CHSH test angles (radians in X-Z plane)
 CHSH_ANGLES = {
@@ -106,7 +118,7 @@ class E91Result:
     key_counts: dict[str, int]
     qber_key: float
     key_accepted: bool
-    final_key_hex: str = ""
+    key_note: str = KEY_NOTE
     notes: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -303,14 +315,12 @@ def run_e91_experiment(cfg: E91Config | None = None) -> E91Result:
     if violates_bell and qber_key <= 0.11:
         key_accepted = True
         verdict = f"ACCEPTED: Bell violation verified (S={s_val:.3f} > 2.0, {sigma_above_classical:.1f} sigma above classical bound). Genuine entanglement certified."
-        final_key_hex = uuid.uuid5(uuid.NAMESPACE_DNS, f"{job_id}-{s_val}").hex
     else:
         key_accepted = False
         if not violates_bell:
             verdict = f"ABORTED: Bell inequality not violated (S={s_val:.3f} <= 2.0). Entanglement broken by eavesdropper or severe noise."
         else:
             verdict = f"ABORTED: High QBER on key generation basis ({qber_key:.2%} > 11.0%)."
-        final_key_hex = ""
 
     result = E91Result(
         backend=backend_label,
@@ -330,14 +340,14 @@ def run_e91_experiment(cfg: E91Config | None = None) -> E91Result:
         key_counts=key_counts,
         qber_key=round(qber_key, 4),
         key_accepted=key_accepted,
-        final_key_hex=final_key_hex,
         notes="Device-independent Bell test directly eliminates classical simulation / RNG masquerading.",
     )
 
     # Save artifact in results/
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    slug = f"e91_{cfg.backend_name}_{'eve' if cfg.eve_enabled else 'clean'}_{job_id[:8]}"
-    out_file = RESULTS_DIR / f"{slug}.json"
+    out_dir = results_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    slug = f"e91_{cfg.backend_name}_{'eve' if cfg.eve_enabled else 'clean'}_{job_id}"
+    out_file = out_dir / f"{slug}.json"
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(result.to_dict(), f, indent=2)
 

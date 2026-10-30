@@ -1,31 +1,25 @@
-"""Hybrid Post-Quantum Cryptography (PQC) & QKD Master Key Derivation.
+"""Hybrid key agreement: X25519 + ML-KEM-768 (FIPS 203) + a QKD secret, combined with HKDF-SHA256.
 
-Implements:
-1. Hybrid Key Encapsulation (X25519 + ML-KEM-768 / FIPS 203):
-   - Classical ephemeral ECDH over Curve25519 (constant-time C bindings via OpenSSL).
-   - Post-quantum lattice KEM (ML-KEM-768, FIPS 203).
-   - Dynamically leverages liboqs if available, with a standardized FIPS 203 fallback.
-
-2. QKD + PQC Hybrid Key Derivation:
-   - Derives a defense-in-depth master secret by binding:
-       K_master = HKDF-SHA256(K_X25519 || K_MLKEM768 || K_QKD, salt, info)
-   - Concrete proof of: "QKD supplements PQC, doesn't replace it."
-     Security holds unconditionally if ANY component (classical DH, lattice KEM, or QKD)
-     remains uncompromised.
+1. ML-KEM-768 comes from the ``kyber-py`` package, a pure-Python implementation of FIPS 203. It is
+   correct (it matches the standard's sizes and round-trips), but it is not constant-time and not
+   hardened, so it is meant for demonstration; production systems should use liboqs or a vendor library.
+2. X25519 comes from the ``cryptography`` package (OpenSSL).
+3. The three secrets are concatenated and run through HKDF-SHA256:
+       K = HKDF(K_X25519 || K_MLKEM768 || K_QKD)
+   An attacker has to learn all three inputs to recompute K, so the key stays safe while at least one of
+   the three components holds. This is a computational guarantee (HKDF is a hash-based extractor); only the
+   QKD component is information-theoretic, and only under the QKD protocol's own assumptions.
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
-import os
 import secrets
 from dataclasses import dataclass
-from typing import Any
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from kyber_py.ml_kem import ML_KEM_768
 
 
 @dataclass
@@ -53,71 +47,28 @@ class HybridHandshakeResult:
 
 
 # ---------------------------------------------------------------------------
-# ML-KEM-768 (FIPS 203) Implementation
+# ML-KEM-768 (FIPS 203)
 # ---------------------------------------------------------------------------
 
 class MLKEM768:
-    """FIPS 203 ML-KEM-768 parameter implementation with liboqs detection."""
+    """ML-KEM-768 key encapsulation (FIPS 203) backed by kyber-py."""
 
-    def __init__(self) -> None:
-        self._use_oqs = False
-        try:
-            import oqs  # type: ignore
-            if "ML-KEM-768" in oqs.get_enabled_KEM_mechanisms() or "Kyber768" in oqs.get_enabled_KEM_mechanisms():
-                self._oqs = oqs
-                self._use_oqs = True
-        except ImportError:
-            pass
+    PUBLIC_KEY_BYTES = 1184
+    CIPHERTEXT_BYTES = 1088
+    SHARED_SECRET_BYTES = 32
 
     def generate_keypair(self) -> tuple[bytes, bytes]:
-        """Generate (public_key_bytes, private_key_bytes)."""
-        if self._use_oqs:
-            kem_name = "ML-KEM-768" if "ML-KEM-768" in self._oqs.get_enabled_KEM_mechanisms() else "Kyber768"
-            with self._oqs.KeyEncapsulation(kem_name) as client:
-                pub = client.generate_keypair()
-                priv = client.export_secret_key()
-                return pub, priv
-
-        # FIPS 203 compliant deterministic seed generation
-        # Seed d (32 bytes) and z (32 bytes)
-        d = secrets.token_bytes(32)
-        z = secrets.token_bytes(32)
-        pub = hashlib.sha3_256(b"ML-KEM-768-PUB:" + d).digest() + secrets.token_bytes(1152)
-        priv = d + z + pub
-        return pub, priv
+        """Return (encapsulation_key, decapsulation_key)."""
+        return ML_KEM_768.keygen()
 
     def encapsulate(self, public_key_bytes: bytes) -> tuple[bytes, bytes]:
-        """Generate (ciphertext_bytes, shared_secret_32bytes)."""
-        if self._use_oqs:
-            kem_name = "ML-KEM-768" if "ML-KEM-768" in self._oqs.get_enabled_KEM_mechanisms() else "Kyber768"
-            with self._oqs.KeyEncapsulation(kem_name) as server:
-                ct, ss = server.encap_secret(public_key_bytes)
-                return ct, ss
-
-        # Constant-time randomized encapsulation
-        m = secrets.token_bytes(32)
-        g = hashlib.sha3_512(m + hashlib.sha3_256(public_key_bytes).digest()).digest()
-        ss = g[:32]
-        ct = hashlib.sha3_256(b"ML-KEM-768-CT:" + g[32:]).digest() + secrets.token_bytes(1056)
-        return ct, ss
+        """Return (ciphertext, shared_secret) for the holder of the matching decapsulation key."""
+        shared_secret, ciphertext = ML_KEM_768.encaps(public_key_bytes)
+        return ciphertext, shared_secret
 
     def decapsulate(self, private_key_bytes: bytes, ciphertext_bytes: bytes) -> bytes:
-        """Derive shared_secret_32bytes from ciphertext and private key."""
-        if self._use_oqs:
-            kem_name = "ML-KEM-768" if "ML-KEM-768" in self._oqs.get_enabled_KEM_mechanisms() else "Kyber768"
-            with self._oqs.KeyEncapsulation(kem_name, secret_key=private_key_bytes) as client:
-                ss = client.decap_secret(ciphertext_bytes)
-                return ss
-
-        # Valid decapsulation derives identical shared secret
-        d = private_key_bytes[:32]
-        pub = private_key_bytes[64:]
-        h_pub = hashlib.sha3_256(pub).digest()
-        # In standardized KEM, verification reproduces ss
-        m = hashlib.sha3_256(d + ciphertext_bytes[:32]).digest()
-        g = hashlib.sha3_512(m + h_pub).digest()
-        ss = g[:32]
-        return ss
+        """Recover the shared secret. A tampered ciphertext yields an unrelated secret (implicit rejection)."""
+        return ML_KEM_768.decaps(private_key_bytes, ciphertext_bytes)
 
 
 # ---------------------------------------------------------------------------
@@ -202,8 +153,8 @@ def derive_hybrid_qkd_pqc_key(
     master_key = hkdf.derive(combined_ikm)
 
     summary = (
-        "Tri-Hybrid defense-in-depth: Unconditionally secure if ANY ONE of "
-        "Curve25519 (classical), ML-KEM-768 (lattice PQC), or QKD (quantum non-locality) holds."
+        "Tri-hybrid key: an attacker must break X25519, ML-KEM-768 and the QKD secret to recompute it, "
+        "so it stays safe while at least one of the three holds."
     )
 
     return HybridHandshakeResult(
@@ -223,7 +174,10 @@ def execute_full_hybrid_exchange(qkd_secret_hex: str | None = None) -> HybridHan
     ct, x_ss_bob, ml_ss_bob = kem.encapsulate(alice_kp)
     x_ss_alice, ml_ss_alice = kem.decapsulate(alice_kp, ct)
 
-    assert x_ss_bob == x_ss_alice, "X25519 shared secret mismatch"
+    if x_ss_bob != x_ss_alice:
+        raise ValueError("X25519 shared secrets do not match")
+    if ml_ss_bob != ml_ss_alice:
+        raise ValueError("ML-KEM shared secrets do not match")
 
     qkd_bytes = bytes.fromhex(qkd_secret_hex) if qkd_secret_hex else secrets.token_bytes(32)
     return derive_hybrid_qkd_pqc_key(x_ss_alice, ml_ss_alice, qkd_bytes)

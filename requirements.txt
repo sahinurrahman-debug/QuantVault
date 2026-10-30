@@ -11,6 +11,7 @@ scipy==1.18.1
 pandas==3.0.6
 matplotlib==3.11.2
 cryptography>=42.0
+kyber-py==1.2.0       # pure-Python ML-KEM (FIPS 203) for the hybrid key exchange
 
 # Testing
 pytest==9.1.1

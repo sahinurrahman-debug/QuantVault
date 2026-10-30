@@ -19,6 +19,10 @@ def test_quantum_safe_channel_clean_transmission():
     assert res["qkd"]["accepted"] is True
     assert res["qkd"]["qber_observed"] < res["qkd"]["qber_threshold"]
     assert res["pqc"]["status"] == "SUCCESS"
+    assert res["pqc"]["keys_agree"] is True
+    assert len(res["pqc"]["session_key_fingerprint"]) == 16
+    assert "hybrid_session_key_hex" not in res["pqc"]  # the key itself never leaves the function
+    assert not any("preview" in k for k in res["pqc"]) and not any("preview" in k for k in res["qkd"])
 
     payload = res["payload"]
     assert payload["plaintext_transmitted"] is True
@@ -48,6 +52,70 @@ def test_quantum_safe_channel_aborts_under_spy_with_zero_leakage():
     assert payload["ciphertext_hex"] is None
     assert payload["nonce_hex"] is None
     assert payload["tag_hex"] is None
+
+
+def test_channel_abort_comes_from_the_measured_qber_not_from_the_flag():
+    clean = run_quantum_safe_channel(spy=False, qkd_qubits=2048, seed=7)
+    spied = run_quantum_safe_channel(spy=True, qkd_qubits=2048, seed=7)
+    assert clean["qkd"]["qber_observed"] < 0.11 < spied["qkd"]["qber_observed"]
+    assert spied["qkd"]["accepted"] is False
+
+
+def test_channel_never_substitutes_random_bytes_for_a_short_qkd_key():
+    """1024 qubits pass the security check but leave only ~85 secret bits; the channel must say so."""
+    res = run_quantum_safe_channel(spy=False, qkd_qubits=1024, seed=42)
+    assert res["status"] == "INSUFFICIENT_KEY"
+    assert res["pqc"]["status"] == "HALTED"
+    assert res["payload"]["plaintext_transmitted"] is False
+    assert res["payload"]["ciphertext_hex"] is None
+
+
+@pytest.mark.parametrize("qubits", [0, 255, 8193, 100_000, 2048.5, "2048", True, None])
+def test_channel_rejects_out_of_range_qubits(qubits):
+    with pytest.raises(ValueError):
+        run_quantum_safe_channel(qkd_qubits=qubits)
+
+
+def test_channel_rejects_a_non_object_record():
+    with pytest.raises(ValueError):
+        run_quantum_safe_channel(qkd_qubits=2048, record=["not", "an", "object"])
+
+
+def test_channel_encrypts_a_custom_record_and_decrypts_it_intact():
+    record = {"patient_id": "X-1", "patient_name": "Test Person", "diagnosis": "none"}
+    res = run_quantum_safe_channel(record=dict(record), qkd_qubits=2048, seed=42)
+    assert res["status"] == "TRANSMITTED"
+    assert res["payload"]["decrypted_record"] == record
+
+
+def test_report_for_the_web_api_writes_nothing_to_disk(tmp_path: Path, monkeypatch):
+    import src.report as report
+
+    monkeypatch.setattr(report, "REPORT_MD_PATH", tmp_path / "must_not_exist.md")
+    monkeypatch.setattr(report, "REPORT_HTML_PATH", tmp_path / "must_not_exist.html")
+    res = generate_board_report(cfg=RiskConfig(threat_horizon_years=15.0), write_files=False)
+    assert res["markdown_path"] is None and res["html_path"] is None
+    assert "Executive Cryptographic Migration Plan" in res["markdown_content"]
+    assert "<!doctype html>" in res["html_content"]
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_report_is_built_for_the_assets_it_is_given():
+    from src.bridge import cmd_report
+
+    asset = dict(json.loads((Path(__file__).resolve().parent.parent / "data" / "inventory.json").read_text(encoding="utf-8"))["assets"][0])
+    asset["name"] = "Only Asset"
+    res = cmd_report({"assets": [asset], "horizon": 12})
+    assert res["total_assets"] == 1
+    assert "Only Asset" in res["markdown_content"]
+    assert res["markdown_path"] is None  # the API path never writes files
+
+
+def test_report_for_an_empty_inventory_is_an_error_not_the_sample_data():
+    from src.bridge import cmd_report
+
+    with pytest.raises(ValueError, match="empty"):
+        cmd_report({"assets": [], "horizon": 15})
 
 
 def test_board_report_generation(tmp_path: Path):

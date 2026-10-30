@@ -74,7 +74,7 @@ Where $C$ = Confidentiality/Sensitivity, $Q$ = Quantum Exposure, $E$ = Network E
 
 A primary concern for board and audit committees is whether risk prioritisation is fragile or dependent on subjective weightings. QuantVault addresses this via a **1,000-trial Monte Carlo Sensitivity Benchmark**:
 - Each weight ($w_C, w_Q, w_E, w_M$) is simultaneously perturbed by $\pm 30\%$.
-- **Mean Kendall $\tau$ Rank Correlation:** **0.8898** (95% CI: [0.7949, 0.9744]).
+- **Mean Kendall $\tau$ Rank Correlation:** **0.8898** (95% CI: [0.7692, 0.9744]).
 - **Top-5 High-Priority Retention:** **86.6%** stability.
 - **Auditor Conclusion:** The risk ranking is mathematically robust against weight uncertainty. Critical systems remain Critical across all variations.
 

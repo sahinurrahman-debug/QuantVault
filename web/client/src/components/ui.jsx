@@ -105,7 +105,7 @@ export function AssetDetail({ asset, qlabels }) {
           <b>Score Components</b>
           <ComponentBars components={asset.components} />
           <p><small>Security Exposure (C, Q, E): <b>{asset.security_exposure}</b> · Migration Priority R (Adds M): <b>{asset.risk_score}</b>
-            {asset.score_adjusted && <> (Weighted Score {asset.risk_score_raw})</>}</small></p>
+            {asset.score_adjusted && <> · The tier below comes from rules, so it sits outside the usual range for this score</>}</small></p>
           <p><b>Mosca</b>{line('Confidentiality', mc)}{line('Authenticity', ma)}</p>
           {asset.tier_reasons.length > 0 && <p><small>{asset.tier_reasons.join(' ')}</small></p>}
         </div>

@@ -14,6 +14,6 @@
     0.0411
   ],
   "device_error_margin": 0.0049,
-  "status": "VERIFIED: Hardware execution completed with real device noise metrics.",
-  "notes": "Qubits packed in parallel to maximize QPU throughput and minimize runtime."
+  "status": "COMPLETED on FakeMarrakesh, a noise-model emulation of IBM's Marrakesh chip. No quantum hardware job was run.",
+  "notes": "Several Alice/Bob pairs are packed into each circuit to cut the number of circuits and runtime."
 }

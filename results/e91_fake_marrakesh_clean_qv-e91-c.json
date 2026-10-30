@@ -73,6 +73,6 @@
   },
   "qber_key": 0.0112,
   "key_accepted": true,
-  "final_key_hex": "31d24702ac8550d4894c52aa470aac0e",
-  "notes": "Device-independent Bell test directly eliminates classical simulation / RNG masquerading."
+  "notes": "Device-independent Bell test directly eliminates classical simulation / RNG masquerading.",
+  "key_note": "E91 here certifies the channel (Bell test plus key-basis QBER). It does not extract a secret key; reconciliation and privacy amplification are implemented in the BB84 pipeline."
 }

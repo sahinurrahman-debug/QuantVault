@@ -6,8 +6,8 @@ connecting all cryptographic layers into a live end-to-end data transmission:
 1. Quantum Layer (QKD):
    - Physical layer key generation over simulated optical fiber.
    - If an eavesdropper (Spy) intercepts:
-     QBER jumps above 11% (or Bell S <= 2), triggering an IMMEDIATE PROTOCOL ABORT.
-     The patient record NEVER leaves the local secure enclave (0 bytes leakage).
+     QBER rises above the 11% bound, so the protocol aborts before any key is derived.
+     The record is never encrypted or sent (0 bytes leaked).
 
 2. Post-Quantum Layer (PQC):
    - NIST FIPS 203 ML-KEM-768 lattice key encapsulation.
@@ -18,13 +18,15 @@ connecting all cryptographic layers into a live end-to-end data transmission:
      authenticated 256-bit symmetric session key.
 
 4. Application Payload:
-   - Real-world Electronic Health Record (EHR) containing sensitive genomic markers
-     and clinical history requiring long-term confidentiality (Mosca X = 30 years).
+   - A synthetic Electronic Health Record (EHR) standing in for data with genomic markers and
+     clinical history that needs long-term confidentiality (Mosca X = 30 years).
    - Encrypted with AES-256-GCM (Galois/Counter Mode with 128-bit authentication tag).
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import secrets
 from typing import Any
@@ -35,7 +37,7 @@ from .bb84 import BB84Config
 from .postprocessing import SecurityParams, run_qkd
 from .pqc import HybridKEM, derive_hybrid_qkd_pqc_key
 
-# Highly confidential patient EHR record requiring multi-decade protection
+# A synthetic record (no real person) standing in for data that needs multi-decade confidentiality
 SAMPLE_PATIENT_RECORD = {
     "patient_id": "MRN-2026-98412",
     "patient_name": "Eleanor Vance",
@@ -58,6 +60,16 @@ SAMPLE_PATIENT_RECORD = {
 }
 
 
+MIN_QUBITS = 256
+MAX_QUBITS = 8192
+SESSION_KEY_BITS = 256  # the QKD secret that is mixed into the session key
+
+
+def _fingerprint(key: bytes) -> str:
+    """Short public identifier of a key, so both ends can show they hold the same one without revealing it."""
+    return hashlib.sha256(b"QuantVault-key-fingerprint:" + key).hexdigest()[:16]
+
+
 def run_quantum_safe_channel(
     spy: bool = False,
     qkd_qubits: int = 2048,
@@ -66,16 +78,26 @@ def run_quantum_safe_channel(
 ) -> dict[str, Any]:
     """Execute live quantum-safe channel transmission.
 
+    Bob (the sender) and Alice (the receiver) each derive the session key on their own side from the
+    X25519, ML-KEM-768 and QKD secrets they hold. The record is encrypted with Bob's key and decrypted with
+    Alice's, so a mismatch in any component makes the transfer fail instead of passing unnoticed.
+
     Args:
-        spy: If True, Eve intercepts the quantum transmission.
-        qkd_qubits: Number of optical pulses/qubits exchanged in QKD.
-        record: Patient record dictionary to encrypt; defaults to SAMPLE_PATIENT_RECORD.
+        spy: If True, Eve intercepts and resends every qubit on the quantum link.
+        qkd_qubits: Number of qubits sent in the QKD phase (256 to 8192).
+        record: Record to encrypt; defaults to the synthetic SAMPLE_PATIENT_RECORD.
         seed: Random seed for reproducible quantum simulation.
 
     Returns:
-        Structured result detailing channel status, key material, and payload outcome.
+        Structured result detailing channel status, key agreement and payload outcome.
     """
+    if not isinstance(qkd_qubits, int) or isinstance(qkd_qubits, bool) or not MIN_QUBITS <= qkd_qubits <= MAX_QUBITS:
+        raise ValueError(f"qubits must be a whole number between {MIN_QUBITS} and {MAX_QUBITS}")
     record = record or SAMPLE_PATIENT_RECORD
+    if not isinstance(record, dict):
+        raise ValueError("record must be a JSON object")
+    for field in ("patient_id", "patient_name"):
+        record.setdefault(field, "(not provided)")
 
     # -------------------------------------------------------------------------
     # STEP 1: Quantum Key Distribution (QKD)
@@ -90,37 +112,22 @@ def run_quantum_safe_channel(
     )
     security_params = SecurityParams(max_qber=0.11)
     qkd_res = run_qkd(qkd_cfg, security_params)
-
     observed_qber = float(qkd_res.qber_sample)
+    qkd_summary = {
+        "qber_observed": observed_qber,
+        "qber_threshold": security_params.max_qber,
+        "qubits_exchanged": qkd_qubits,
+        "sifted_bits": int(qkd_res.n_sifted),
+    }
 
-    # -------------------------------------------------------------------------
-    # STEP 2: Invariant Check - Eavesdropper Detection
-    # -------------------------------------------------------------------------
-    if not qkd_res.accepted or spy:
-        # Security invariant breached! Abort immediately before payload touches memory.
-        abort_explanation = (
-            f"SECURITY VIOLATION DETECTED: Quantum channel observed QBER of {observed_qber:.2%} "
-            f"(threshold: {security_params.max_qber:.2%}). "
-            "Quantum no-cloning disturbance detected eavesdropper intercepting the fiber. "
-            "Key derivation immediately halted. Payload NEVER left the secure local enclave."
-        )
-
+    def withheld(status: str, reason: str, verdict: str, spy_detected: bool) -> dict[str, Any]:
+        """No key was produced, so nothing is encrypted and nothing leaves the sender."""
         return {
-            "status": "ABORTED",
+            "status": status,
             "spy_present": spy,
-            "spy_detected": True,
-            "qkd": {
-                "accepted": False,
-                "qber_observed": observed_qber,
-                "qber_threshold": security_params.max_qber,
-                "qubits_exchanged": qkd_qubits,
-                "sifted_bits": int(qkd_res.n_sifted),
-                "abort_reason": abort_explanation,
-            },
-            "pqc": {
-                "status": "HALTED",
-                "reason": "Key derivation suppressed due to quantum channel abort",
-            },
+            "spy_detected": spy_detected,
+            "qkd": {"accepted": False, "abort_reason": reason, **qkd_summary},
+            "pqc": {"status": "HALTED", "reason": "Key derivation suppressed because the quantum link produced no usable key"},
             "payload": {
                 "patient_id": record["patient_id"],
                 "patient_name": record["patient_name"],
@@ -130,61 +137,63 @@ def run_quantum_safe_channel(
                 "nonce_hex": None,
                 "tag_hex": None,
             },
-            "defense_summary": (
-                "Device-Independent Safety: The quantum channel collapsed under eavesdropping. "
-                "Because keys are not generated, zero plaintext was transmitted."
-            ),
-            "verdict": "ABORTED: Spy detected on quantum link. Transmission halted with 0 bytes leaked.",
+            "defense_summary": "No session key was derived, so no data was encrypted or sent.",
+            "verdict": verdict,
         }
 
     # -------------------------------------------------------------------------
-    # STEP 3: Post-Quantum Cryptography (ML-KEM-768 + X25519)
+    # STEP 2: Abort before the payload is touched if the quantum link is not trustworthy
     # -------------------------------------------------------------------------
-    # Convert QKD bits to 32 bytes
-    if len(qkd_res.final_key_alice) >= 256:
-        qkd_bytes = np_bits_to_bytes(qkd_res.final_key_alice[:256])
-    else:
-        # Fallback padding if finite key length was shorter
-        qkd_bytes = secrets.token_bytes(32)
+    if not qkd_res.accepted:
+        reason = (
+            f"Observed QBER of {observed_qber:.2%} against a limit of {security_params.max_qber:.2%}: "
+            "the link was disturbed, which is what an eavesdropper's measurements look like. "
+            "Key derivation was halted and the payload never left the sender."
+        )
+        return withheld("ABORTED", reason, "ABORTED: the quantum link failed its security check. Transmission halted, 0 bytes leaked.", True)
+
+    if len(qkd_res.final_key_alice) < SESSION_KEY_BITS:
+        reason = (
+            f"The link passed its security check, but only {len(qkd_res.final_key_alice)} secret bits survived "
+            f"error correction and privacy amplification; {SESSION_KEY_BITS} are needed. Send more qubits."
+        )
+        return withheld("INSUFFICIENT_KEY", reason, "HALTED: not enough secret key from the quantum link. Send more qubits.", False)
+
+    # -------------------------------------------------------------------------
+    # STEP 3: Each side holds its own copy of every secret
+    # -------------------------------------------------------------------------
+    qkd_alice = np_bits_to_bytes(qkd_res.final_key_alice[:SESSION_KEY_BITS])
+    qkd_bob = np_bits_to_bytes(qkd_res.final_key_bob[:SESSION_KEY_BITS])
 
     kem = HybridKEM()
     alice_kp = kem.generate_keypair()
     ct, x_ss_bob, ml_ss_bob = kem.encapsulate(alice_kp)
     x_ss_alice, ml_ss_alice = kem.decapsulate(alice_kp, ct)
 
-    assert x_ss_alice == x_ss_bob, "X25519 key agreement failed"
+    salt = b"QuantVault-EHR-Live-Channel-v1"
+    key_alice = bytes.fromhex(derive_hybrid_qkd_pqc_key(x_ss_alice, ml_ss_alice, qkd_alice, salt=salt).hybrid_session_key_hex)
+    key_bob = bytes.fromhex(derive_hybrid_qkd_pqc_key(x_ss_bob, ml_ss_bob, qkd_bob, salt=salt).hybrid_session_key_hex)
+    if not hmac.compare_digest(key_alice, key_bob):
+        components = {
+            "X25519": x_ss_alice == x_ss_bob,
+            "ML-KEM-768": ml_ss_alice == ml_ss_bob,
+            "QKD": qkd_alice == qkd_bob,
+        }
+        failed = ", ".join(name for name, ok in components.items() if not ok)
+        raise ValueError(f"Alice and Bob derived different session keys (disagreeing component: {failed})")
 
     # -------------------------------------------------------------------------
-    # STEP 4: Tri-Hybrid Key Derivation (HKDF-SHA256)
-    # -------------------------------------------------------------------------
-    handshake = derive_hybrid_qkd_pqc_key(
-        x25519_secret=x_ss_alice,
-        mlkem_secret=ml_ss_alice,
-        qkd_secret=qkd_bytes,
-        salt=b"QuantVault-EHR-Live-Channel-v1",
-        key_length=32,
-    )
-    aes_key = bytes.fromhex(handshake.hybrid_session_key_hex)
-
-    # -------------------------------------------------------------------------
-    # STEP 5: Live Payload Encryption (AES-256-GCM)
+    # STEP 4: Bob encrypts with his key, Alice decrypts with hers (AES-256-GCM)
     # -------------------------------------------------------------------------
     plaintext_json = json.dumps(record, separators=(",", ":")).encode("utf-8")
-    nonce = secrets.token_bytes(12)  # Standard 96-bit GCM nonce
+    nonce = secrets.token_bytes(12)  # standard 96-bit GCM nonce
     aad = b"QuantVault-Healthcare-EHR-Authenticated-Data"
+    ct_with_tag = AESGCM(key_bob).encrypt(nonce, plaintext_json, aad)
+    ciphertext, auth_tag = ct_with_tag[:-16], ct_with_tag[-16:]
 
-    aesgcm = AESGCM(aes_key)
-    # GCM returns ciphertext with 16-byte authentication tag appended
-    ct_with_tag = aesgcm.encrypt(nonce, plaintext_json, aad)
-    ciphertext = ct_with_tag[:-16]
-    auth_tag = ct_with_tag[-16:]
-
-    # -------------------------------------------------------------------------
-    # STEP 6: Decryption & Authenticity Verification (Receiver: Bob)
-    # -------------------------------------------------------------------------
-    decrypted_raw = aesgcm.decrypt(nonce, ct_with_tag, aad)
-    decrypted_record = json.loads(decrypted_raw.decode("utf-8"))
-    assert decrypted_record["patient_id"] == record["patient_id"], "Decryption integrity failure"
+    decrypted_record = json.loads(AESGCM(key_alice).decrypt(nonce, ct_with_tag, aad).decode("utf-8"))
+    if decrypted_record != record:
+        raise ValueError("Decrypted record does not match the original")
 
     return {
         "status": "TRANSMITTED",
@@ -192,25 +201,20 @@ def run_quantum_safe_channel(
         "spy_detected": False,
         "qkd": {
             "accepted": True,
-            "qber_observed": observed_qber,
-            "qber_threshold": security_params.max_qber,
-            "qubits_exchanged": qkd_qubits,
-            "sifted_bits": int(qkd_res.n_sifted),
             "final_key_bits": len(qkd_res.final_key_alice),
-            "qkd_secret_preview": qkd_bytes.hex()[:16] + "...",
+            **qkd_summary,
         },
         "pqc": {
             "status": "SUCCESS",
-            "x25519_secret_preview": x_ss_alice.hex()[:16] + "...",
-            "mlkem_secret_preview": ml_ss_alice.hex()[:16] + "...",
-            "hybrid_session_key_hex": handshake.hybrid_session_key_hex,
+            "keys_agree": True,
+            "session_key_fingerprint": _fingerprint(key_alice),
             "kdf": "HKDF-SHA256(X25519 || ML-KEM-768 || QKD)",
             "cipher": "AES-256-GCM (256-bit key, 96-bit IV, 128-bit tag)",
         },
         "payload": {
             "patient_id": record["patient_id"],
             "patient_name": record["patient_name"],
-            "diagnosis": record["diagnosis"],
+            "diagnosis": record.get("diagnosis"),
             "plaintext_transmitted": True,
             "plaintext_length_bytes": len(plaintext_json),
             "plaintext_bytes_leaked": 0,
@@ -221,11 +225,10 @@ def run_quantum_safe_channel(
             "integrity_verified": True,
         },
         "defense_summary": (
-            "Tri-Hybrid Defense: Even if an adversary develops a cryptographically relevant "
-            "quantum computer (breaking Curve25519) and finds a mathematical vulnerability in "
-            "lattice ML-KEM-768, confidentiality is guaranteed by the physical QKD shared secret."
+            "The session key mixes three independent secrets, so an attacker has to break X25519, "
+            "ML-KEM-768 and the QKD secret to recompute it."
         ),
-        "verdict": "SECURE TRANSMISSION: QKD clean, PQC encapsulated, patient record encrypted and verified.",
+        "verdict": "SECURE TRANSMISSION: QKD link verified, both ends derived the same hybrid key, record encrypted and decrypted intact.",
     }
 
 

@@ -10,6 +10,7 @@ Aer prediction and saves execution artifacts in results/.
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -22,6 +23,11 @@ from qiskit_aer import AerSimulator
 
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = ROOT / "results"
+
+
+def results_dir() -> Path:
+    """Where result artifacts are written; QUANTVAULT_RESULTS_DIR redirects it (the tests use a temp folder)."""
+    return Path(os.environ.get("QUANTVAULT_RESULTS_DIR") or RESULTS_DIR)
 
 
 @dataclass
@@ -88,6 +94,14 @@ def build_parallel_bb84_circuit(
         qc.measure(q[q_det], c[i])
 
     return qc
+
+
+def _status(backend_name: str, label: str) -> str:
+    if backend_name == "ibm":
+        return f"COMPLETED on real IBM Quantum hardware ({label})."
+    if backend_name == "fake_marrakesh":
+        return "COMPLETED on FakeMarrakesh, a noise-model emulation of IBM's Marrakesh chip. No quantum hardware job was run."
+    return "COMPLETED on the ideal noiseless simulator."
 
 
 def run_hardware_bb84(cfg: HardwareBB84Config | None = None) -> HardwareBB84Result:
@@ -164,12 +178,13 @@ def run_hardware_bb84(cfg: HardwareBB84Config | None = None) -> HardwareBB84Resu
         ideal_aer_qber=round(ideal_aer_qber, 4),
         qber_95_ci=ci_95,
         device_error_margin=round(margin, 4),
-        status="VERIFIED: Hardware execution completed with real device noise metrics.",
-        notes="Qubits packed in parallel to maximize QPU throughput and minimize runtime.",
+        status=_status(cfg.backend_name, backend_label),
+        notes="Several Alice/Bob pairs are packed into each circuit to cut the number of circuits and runtime.",
     )
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_file = RESULTS_DIR / "bb84_hardware_benchmark.json"
+    out_dir = results_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / "bb84_hardware_benchmark.json"
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(result.to_dict(), f, indent=2)
 

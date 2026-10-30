@@ -5,7 +5,7 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import mongoose from 'mongoose';
 import { createApp } from '../src/app.js';
-import { config } from '../src/config.js';
+import { config, REPO_ROOT } from '../src/config.js';
 import { connectDb } from '../src/db.js';
 import { ensureIndexes } from '../src/models.js';
 import { Client, newAsset, PASSWORD } from './helpers.js';
@@ -270,6 +270,102 @@ describe('errors never leak server internals', () => {
     } finally {
       config.python = real;
     }
+  });
+});
+
+describe('board report', () => {
+  const reportFiles = ['board_migration_report.md', 'board_migration_report.html'].map((f) => path.join(REPO_ROOT, 'docs', f));
+  const stamp = () => reportFiles.map((f) => (fs.existsSync(f) ? fs.statSync(f).mtimeMs : null));
+
+  it('builds Markdown and HTML in memory and never writes into the repository', async () => {
+    const before = stamp();
+    const r = await http('GET', '/risk/report?horizon=15');
+    assert.equal(r.status, 200);
+    assert.match(r.body.markdown_content, /Executive Cryptographic Migration Plan/);
+    assert.match(r.body.html_content, /<!doctype html>/i);
+    assert.equal(r.body.markdown_path, null);
+    assert.equal(r.body.html_path, null);
+    assert.equal(r.body.total_assets, 13);
+    assert.deepEqual(stamp(), before);
+  });
+
+  it('requires a signed-in user', async () => {
+    const r = await new Client(base).request('GET', '/risk/report');
+    assert.equal(r.status, 401);
+  });
+
+  it('rejects an invalid horizon', async () => {
+    const r = await http('GET', '/risk/report?horizon=500');
+    assert.equal(r.status, 422);
+  });
+
+  it('works for a tiny inventory and says so plainly for an empty one', async () => {
+    const solo = new Client(base);
+    await solo.request('POST', '/auth/signup', { name: 'Solo Report', email: 'solo-report@example.com', password: PASSWORD });
+    const assets = (await solo.request('GET', '/assets')).body;
+    for (const a of assets.slice(1)) await solo.request('DELETE', `/assets/${a.id}`);
+    const one = await solo.request('GET', '/risk/report?horizon=10');
+    assert.equal(one.status, 200);
+    assert.equal(one.body.total_assets, 1);
+    await solo.request('DELETE', `/assets/${assets[0].id}`);
+    const none = await solo.request('GET', '/risk/report?horizon=10');
+    assert.equal(none.status, 409);
+  });
+
+  it('has its own hourly quota', async () => {
+    const srv = createApp({ limits: { ...config.limits, reportsPerHour: 2 } }).listen(0);
+    const c = new Client(`http://127.0.0.1:${srv.address().port}/api`);
+    try {
+      await c.request('POST', '/auth/signup', { name: 'Report Quota', email: 'report-quota@example.com', password: PASSWORD });
+      const statuses = [];
+      for (let i = 0; i < 3; i += 1) statuses.push((await c.request('GET', '/risk/report')).status);
+      assert.deepEqual(statuses, [200, 200, 429]);
+    } finally {
+      srv.close();
+    }
+  });
+});
+
+describe('live quantum-safe channel', () => {
+  it('sends the record when the link is clean, and both ends derive the same key', async () => {
+    const r = await http('POST', '/channel/transmit', { spy: false, qubits: 2048 });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.status, 'TRANSMITTED');
+    assert.equal(r.body.pqc.keys_agree, true);
+    assert.equal(r.body.pqc.session_key_fingerprint.length, 16);
+    assert.equal(r.body.payload.integrity_verified, true);
+    assert.ok(!JSON.stringify(r.body).includes('hybrid_session_key'), 'the session key must not be sent to the browser');
+  });
+
+  it('aborts with nothing encrypted when an eavesdropper is on the link', async () => {
+    const r = await http('POST', '/channel/transmit', { spy: true, qubits: 2048 });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.status, 'ABORTED');
+    assert.equal(r.body.payload.ciphertext_hex, null);
+    assert.equal(r.body.payload.plaintext_bytes_leaked, 0);
+  });
+
+  it('says so, instead of inventing a key, when too few secret bits survive', async () => {
+    const r = await http('POST', '/channel/transmit', { spy: false, qubits: 1024 });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.status, 'INSUFFICIENT_KEY');
+    assert.equal(r.body.payload.ciphertext_hex, null);
+  });
+
+  it('refuses sizes that would tie up the simulator, and malformed input', async () => {
+    const cases = [
+      { qubits: 1_000_000 }, { qubits: 255 }, { qubits: 8193 }, { qubits: '2048' }, { qubits: 2048.5 },
+      { spy: 'yes' }, { record: ['not', 'an', 'object'] }, { record: { note: 'x'.repeat(5000) } },
+    ];
+    for (const body of cases) {
+      const r = await http('POST', '/channel/transmit', body);
+      assert.equal(r.status, 422, JSON.stringify(body).slice(0, 60));
+    }
+  });
+
+  it('requires a signed-in user', async () => {
+    const r = await new Client(base).request('POST', '/channel/transmit', { qubits: 2048 });
+    assert.equal(r.status, 401);
   });
 });
 

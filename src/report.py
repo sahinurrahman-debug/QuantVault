@@ -64,8 +64,12 @@ def generate_board_report(
     cfg: RiskConfig | None = None,
     output_md_path: Path | str | None = None,
     output_html_path: Path | str | None = None,
+    write_files: bool = True,
 ) -> dict[str, Any]:
     """Generate both Markdown and HTML executive board reports.
+
+    With ``write_files=False`` nothing touches the disk and the paths are None; the web API uses this, because
+    a request must not write into the repository (it is read-only in the container, and shared between users).
 
     Returns:
         dict containing markdown_content, html_content, and output file paths.
@@ -379,18 +383,18 @@ The Executive Committee is requested to approve the following quarterly mileston
 </html>
 """
 
-    md_out = Path(output_md_path or REPORT_MD_PATH)
-    html_out = Path(output_html_path or REPORT_HTML_PATH)
-
-    md_out.parent.mkdir(parents=True, exist_ok=True)
-    html_out.parent.mkdir(parents=True, exist_ok=True)
-
-    md_out.write_text(md_content, encoding="utf-8")
-    html_out.write_text(html_content, encoding="utf-8")
+    md_out = html_out = None
+    if write_files:
+        md_out = Path(output_md_path or REPORT_MD_PATH)
+        html_out = Path(output_html_path or REPORT_HTML_PATH)
+        md_out.parent.mkdir(parents=True, exist_ok=True)
+        html_out.parent.mkdir(parents=True, exist_ok=True)
+        md_out.write_text(md_content, encoding="utf-8")
+        html_out.write_text(html_content, encoding="utf-8")
 
     return {
-        "markdown_path": str(md_out),
-        "html_path": str(html_out),
+        "markdown_path": str(md_out) if md_out else None,
+        "html_path": str(html_out) if html_out else None,
         "markdown_content": md_content,
         "html_content": html_content,
         "total_assets": ov["total_assets"],

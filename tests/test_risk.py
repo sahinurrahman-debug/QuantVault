@@ -198,3 +198,31 @@ def test_weight_sensitivity_analysis():
     assert sens["mean_kendall_tau"] > 0.80
     assert sens["robust"] is True
     assert "ci_95_tau" in sens
+
+
+def _inventory_with(n):
+    import json
+    from pathlib import Path
+
+    data = json.loads((Path(__file__).resolve().parent.parent / "data" / "inventory.json").read_text(encoding="utf-8"))
+    data["assets"] = data["assets"][:n]
+    return data
+
+
+@pytest.mark.parametrize("n_assets", [1, 2, 3, 4])
+def test_weight_sensitivity_handles_inventories_smaller_than_five_assets(n_assets):
+    from src.risk import weight_sensitivity_analysis
+
+    out = weight_sensitivity_analysis(_inventory_with(n_assets), RiskConfig(), n_samples=40, seed=1)
+    assert 0.0 <= out["mean_top5_overlap_pct"] <= 100.0
+    assert out["ci_95_tau"][0] <= out["mean_kendall_tau"] <= out["ci_95_tau"][1] + 1e-9
+    if n_assets == 1:  # one asset cannot be re-ranked: perfect stability, not a crash
+        assert out["mean_kendall_tau"] == 1.0 and out["mean_top5_overlap_pct"] == 100.0
+
+
+def test_weight_sensitivity_interval_is_a_95_percent_interval():
+    from src.risk import weight_sensitivity_analysis
+
+    out = weight_sensitivity_analysis(n_samples=200, seed=3)
+    lo, hi = out["ci_95_tau"]
+    assert lo <= out["mean_kendall_tau"] <= hi

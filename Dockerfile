@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
 WORKDIR /app
 # Only the packages the engines need (not the optional qiskit-nature add-on). The API finds /app/.venv itself.
 RUN python3 -m venv .venv \
-    && .venv/bin/pip install --no-cache-dir "qiskit>=1.0,<2.0" "qiskit-aer>=0.15" numpy scipy pandas "cryptography>=42.0"
+    && .venv/bin/pip install --no-cache-dir "qiskit>=1.0,<2.0" "qiskit-aer>=0.15" numpy scipy pandas "cryptography>=42.0" "kyber-py==1.2.0"
 COPY src ./src
 COPY data/inventory.json ./data/inventory.json
 COPY web/server/package*.json ./web/server/

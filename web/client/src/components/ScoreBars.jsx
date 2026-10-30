@@ -12,7 +12,7 @@ export default function ScoreBars({ items }) {
         <li key={i.id}>
           <div className="score-row">
             <span className="score-name">{i.name}</span>
-            <span className="score-val" title={i.adjusted ? `Weighted score ${i.raw}, shown within the ${i.tier} range` : undefined}>
+            <span className="score-val" title={i.adjusted ? 'The tier comes from rules (Mosca, unknown or weak crypto), so it can sit outside the usual range for this score' : undefined}>
               {i.score.toFixed(1)}
             </span>
           </div>

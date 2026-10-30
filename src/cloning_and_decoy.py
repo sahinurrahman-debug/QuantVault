@@ -87,9 +87,6 @@ def phase_covariant_cloning_circuit(bit: int, basis: int) -> QuantumCircuit:
 
 def run_optimal_cloning_simulation(n_qubits: int = 4000, seed: int = 42) -> CloningAttackResult:
     """Simulate an optimal phase-covariant cloning attack across n_qubits."""
-    rng = np.random.default_rng(seed)
-    bits = rng.integers(0, 2, n_qubits)
-    bases = rng.integers(0, 2, n_qubits)  # Alice and Bob matched bases for sifted key
 
     backend = AerSimulator()
     shots_per_type = n_qubits // 4

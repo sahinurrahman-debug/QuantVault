@@ -13,7 +13,7 @@ export default function Overview({ risk, sweep, z }) {
   const completeness = Math.round(o.inventory_completeness * 100);
   const unknown = risk.results.filter((a) => a.has_unknown);
   const bars = [...risk.results].sort((a, b) => b.risk_score - a.risk_score)
-    .map((a) => ({ id: a.id, name: a.name, score: a.risk_score, tier: a.tier, raw: a.risk_score_raw, adjusted: a.score_adjusted }));
+    .map((a) => ({ id: a.id, name: a.name, score: a.risk_score, tier: a.tier, adjusted: a.score_adjusted }));
   const sweepData = sweep?.rows.map((r) => ({ z: r.z, 'Mosca Violated': r.mosca_violated, 'Critical or High': r.urgent }));
 
   return (

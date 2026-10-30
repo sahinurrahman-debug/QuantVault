@@ -12,7 +12,7 @@ import {
 } from './models.js';
 import { callPython, getMeta, PythonError } from './python.js';
 import {
-  validateAsset, validateEmail, validateExperiment, validateHorizon, validateQkd,
+  validateAsset, validateChannel, validateEmail, validateExperiment, validateHorizon, validateQkd,
 } from './validate.js';
 
 const subscribeLimiter = makeLimiter({ max: 10, windowMs: 3_600_000 });
@@ -97,6 +97,7 @@ export function createApp({ clientDist = config.clientDist, limits = config.limi
 
   const riskLimiter = makeLimiter({ max: limits.riskPer15Min, windowMs: 15 * 60_000 });
   const qkdLimiter = makeLimiter({ max: limits.qkdPerHour, windowMs: 3_600_000 });
+  const reportLimiter = makeLimiter({ max: limits.reportsPerHour, windowMs: 3_600_000 });
   const experimentLimiter = makeLimiter({ max: limits.experimentsPerHour, windowMs: 3_600_000 });
 
   const api = express.Router();
@@ -193,18 +194,20 @@ export function createApp({ clientDist = config.clientDist, limits = config.limi
     res.json(await callPython({ cmd: 'sweep', assets }, { userId: req.user.id }));
   }));
 
-  api.get('/risk/report', limitByUser(riskLimiter, 'risk assessments'), ah(async (req, res) => {
-    const { value: horizon } = validateHorizon(req.query.horizon);
+  // The report is built in memory and returned; nothing is written to disk on the server.
+  api.get('/risk/report', limitByUser(reportLimiter, 'board reports'), ah(async (req, res) => {
+    const { value: horizon, errors } = validateHorizon(req.query.horizon);
+    if (errors.length) throw new HttpError(422, errors[0]);
     const assets = await currentAssets(req.user.id);
+    if (!assets.length) throw new HttpError(409, 'The inventory is empty; add an asset or reset to the sample inventory');
     res.json(await callPython({ cmd: 'report', assets, horizon: horizon || 15 }, { userId: req.user.id }));
   }));
 
-  // ---- live quantum-safe channel
+  // ---- live quantum-safe channel (a QKD simulation, so it shares the QKD quota and the heavy lane)
   api.post('/channel/transmit', limitByUser(qkdLimiter, 'QKD simulations'), ah(async (req, res) => {
-    const spy = Boolean(req.body.spy);
-    const qubits = Number(req.body.qubits) || 2048;
-    const record = req.body.record || null;
-    res.json(await callPython({ cmd: 'channel', spy, qubits, record }, { userId: req.user.id }));
+    const { value, errors } = validateChannel(req.body);
+    if (errors.length) throw new HttpError(422, 'Invalid channel parameters', errors);
+    res.json(await callPython({ cmd: 'channel', ...value }, { userId: req.user.id }));
   }));
 
   // ---- QKD

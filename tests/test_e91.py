@@ -57,7 +57,7 @@ def test_e91_ideal_simulation_violates_bell():
     assert result.violates_bell is True
     assert result.qber_key < 0.03, f"Ideal QBER should be near zero, got {result.qber_key}"
     assert result.key_accepted is True
-    assert len(result.final_key_hex) == 32
+    assert not hasattr(result, "final_key_hex")  # E91 certifies the channel; it must not present a made-up key
 
 
 def test_e91_intercept_resend_collapses_bell_inequality():

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { makeLimiter } from '../src/http.js';
-import { callPython, childEnv, PythonError, schedulerStats } from '../src/python.js';
+import { callPython, childEnv, laneOf, PythonError, schedulerStats } from '../src/python.js';
 
 describe('makeLimiter', () => {
   it('blocks a key once its budget is used and lets others through', () => {
@@ -51,6 +51,11 @@ describe('PythonError', () => {
 
   it('shows bad-input messages from the engine (422) but marks them as safe', async () => {
     await assert.rejects(callPython({ cmd: 'qkd', n_qubits: 4 }), (e) => e.status === 422 && e.expose === true && /n_qubits/.test(e.message));
+  });
+
+  it('puts every Qiskit simulation in the heavy lane and plain scoring in the light lane', () => {
+    for (const cmd of ['qkd', 'channel', 'experiments']) assert.equal(laneOf(cmd), 'heavy', cmd);
+    for (const cmd of ['meta', 'risk', 'sweep', 'report']) assert.equal(laneOf(cmd), 'light', cmd);
   });
 
   it('leaves the scheduler empty after jobs finish', () => {

@@ -18,14 +18,15 @@ export class PythonError extends Error {
 // ------------------------------------------------------------------ scheduling
 // Two lanes, so a long simulation can never block a quick dashboard request:
 //   light - meta / risk / sweep: pure Python, no Qiskit, ~0.4 s each
-//   heavy - qkd / experiments: import Qiskit and use real CPU and memory
+//   heavy - qkd / channel / experiments: import Qiskit and use real CPU and memory
 // Inside the heavy lane an interactive QKD run is served before a queued experiment batch.
 const LANES = {
   light: { max: () => config.pythonConcurrency, maxQueue: 60, perUser: 8, active: 0, queue: [], users: new Map() },
   heavy: { max: () => config.pythonHeavyConcurrency, maxQueue: 8, perUser: 2, active: 0, queue: [], users: new Map() },
 };
-const PRIORITY = { qkd: 0, experiments: 1 };
-const laneOf = (cmd) => (cmd === 'qkd' || cmd === 'experiments' ? 'heavy' : 'light');
+const PRIORITY = { qkd: 0, channel: 0, experiments: 1 };
+const HEAVY = new Set(['qkd', 'channel', 'experiments']);
+export const laneOf = (cmd) => (HEAVY.has(cmd) ? 'heavy' : 'light');
 
 function userCount(lane, userId, delta) {
   const n = (lane.users.get(userId) || 0) + delta;

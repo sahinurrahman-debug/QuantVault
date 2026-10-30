@@ -71,7 +71,7 @@ export default function Prioritisation({ risk, meta, z }) {
                     <td><MoscaBadge mosca={a.mosca} /></td>
                     <td>
                       <b className={a.score_adjusted ? 'adj' : undefined}
-                        title={a.score_adjusted ? `Weighted score ${a.risk_score_raw}, shown within the ${a.tier} range` : undefined}>{a.risk_score}</b>
+                        title={a.score_adjusted ? 'The tier comes from rules (Mosca, unknown or weak crypto), so it can sit outside the usual range for this score' : undefined}>{a.risk_score}</b>
                     </td>
                     <td>{a.security_exposure}</td>
                     <td><TierBadge tier={a.tier} /></td>

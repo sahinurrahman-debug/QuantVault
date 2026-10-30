@@ -57,7 +57,7 @@
 
 | Member | Primary Responsibilities & Contributions |
 | :--- | :--- |
-| **Sahinur Rahman** (_Team Lead_) | Core architecture, E91 entanglement-based QKD module (`src/e91.py`), CHSH Bell inequality test implementation, IBM hardware & `FakeMarrakesh` integration, results artifact validation. |
+| **Sahinur Rahman** (_Team Lead_) | Core architecture, E91 entanglement-based QKD module (`src/e91.py`), CHSH Bell inequality test implementation, `FakeMarrakesh` noise-model emulation and an optional IBM Quantum backend, results artifact validation. |
 | **Subhraditya Ghosh** (_Developer_) | BB84 simulation pipeline (`src/bb84.py`), simplified Cascade error reconciliation, Toeplitz privacy amplification (`src/postprocessing.py`), Qiskit Aer noise models, comprehensive test suite. |
 | **Archisman Halder** (_Developer_) | Cryptographic inventory (`data/inventory.json`), Mosca inequality engine & defensible risk scoring, weight sensitivity Monte Carlo analysis (`src/risk.py`), MERN web dashboard integration. |
 
@@ -125,7 +125,7 @@ Method details, formulas and security limitations are in [docs/METHODOLOGY.md](d
 
 A central critique of software-simulated QKD is the **"classical algorithm in a costume"** problem: any classical pseudo-random number generator (`numpy.random`) can mimic BB84 bit outcomes and claim an eavesdropper was detected. 
 
-QuantVault **kills this critique** through an **entanglement-based E91 protocol with a Clauser-Horne-Shimony-Holt (CHSH) Bell test**, executable on IBM Quantum hardware or the 156-qubit `FakeMarrakesh` Heron chip model:
+QuantVault **kills this critique** through an **entanglement-based E91 protocol with a Clauser-Horne-Shimony-Holt (CHSH) Bell test**, runnable on Qiskit Aer, on `FakeMarrakesh` (a noise-model emulation of IBM's 156-qubit Heron chip) or, with IBM credentials, on real IBM hardware:
 
 1. **Non-local entanglement cannot be classical:** 
    Alice and Bob share Bell pairs $|\Phi^+\rangle = \frac{|00\rangle + |11\rangle}{\sqrt{2}}$. In local hidden-variable (classical) physics, the CHSH Bell parameter is strictly bounded:
@@ -137,25 +137,31 @@ QuantVault **kills this critique** through an **entanglement-based E91 protocol 
    $$S_{\text{Eve}} = \sqrt{2} \approx 1.4142 \le 2.0000$$
    Eavesdropping is detected **device-independently** by the failure of the Bell inequality, without assuming anything about Eve's equipment.
 
-### 📊 Measured Hardware & Simulation Results
+### 📊 Measured Simulation Results (Noise-Model Emulation; No QPU Job Was Run)
 
-All raw JSON runs with individual shot counts, standard errors, and timestamps are committed in [`results/`](results/).
+Every run below is a simulation. `FakeMarrakesh` is Qiskit's noise-model emulation of IBM's Marrakesh chip, not a job on real quantum hardware. The code can target a real IBM backend (`--backend ibm`, with credentials), but no such run is committed.
+
+All raw JSON runs with shot counts, standard errors and timestamps are committed in [`results/`](results/). The Aer rows summarise every committed Aer run, because those files were produced repeatedly and are not a single curated run.
 
 | Target Backend | Eavesdropper | Shots / Setting | Measured Bell Parameter $S$ | 95% Conf. Interval | Significance | Key QBER | Protocol Verdict | Job ID / Run Artifact |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **FakeMarrakesh** (156-qubit Heron) | **None (Clean)** | 4,000 | **2.7800** | [2.7354, 2.8246] | **+34.3 $\sigma$** | 1.12% | **ACCEPTED** (Entanglement Verified) | [`qv-e91-c56c3db8bbc7`](results/e91_fake_marrakesh_clean_qv-e91-c.json) |
 | **FakeMarrakesh** (156-qubit Heron) | **Eve (Intercept-Resend)** | 4,000 | **1.3845** | [1.3264, 1.4426] | **-20.8 $\sigma$** | 26.15% | **ABORTED** (Bell Violation Destroyed) | [`qv-e91-8b3c5594b378`](results/e91_fake_marrakesh_eve_qv-e91-8.json) |
-| **Qiskit Aer** (Ideal) | **None (Clean)** | 4,000 | **2.8395** | [2.7956, 2.8834] | **+37.5 $\sigma$** | 0.00% | **ACCEPTED** (Tsirelson Bound Reached) | [`qv-e91-aer-clean`](results/) |
-| **Qiskit Aer** (Ideal) | **Eve (Intercept-Resend)** | 4,000 | **1.4150** | [1.3330, 1.4970] | **-14.0 $\sigma$** | 25.50% | **ABORTED** (Classical Limit Satisfied) | [`qv-e91-aer-eve`](results/) |
-| **FakeMarrakesh** (156-qubit Heron) | **BB84 Parallel Packing** | 5,600 bits | N/A (BB84) | [3.14%, 4.11%] | Hardware Noise | **3.62%** | **ACCEPTED** (Below 11% Threshold) | [`qv-bb84hw-2f50e494`](results/bb84_hardware_benchmark.json) |
+| **Qiskit Aer** (Ideal), 12 runs | **None (Clean)** | 1,000–3,000 | **2.834** mean (range 2.766–2.906) | [2.815, 2.853] (mean of runs) | **+25.2 $\sigma$** (mean) | 0.00% | **ACCEPTED** in 12 of 12 (near the 2√2 ≈ 2.828 Tsirelson bound) | [`results/e91_aer_clean_*.json`](results/) |
+| **Qiskit Aer** (Ideal), 13 runs | **Eve (Intercept-Resend)** | 1,000–3,000 | **1.409** mean (range 1.327–1.527) | [1.382, 1.435] (mean of runs) | **-13.6 $\sigma$** (mean) | 24.58% (mean) | **ABORTED** in 13 of 13 (classical limit respected) | [`results/e91_aer_eve_*.json`](results/) |
+| **FakeMarrakesh** (156-qubit Heron model) | **BB84 Parallel Packing** | 5,600 bits | N/A (BB84) | [3.14%, 4.11%] | Emulated device noise | **3.62%** | **ACCEPTED** (Below 11% Threshold) | [`qv-bb84hw-2f50e494`](results/bb84_hardware_benchmark.json) |
+
+**What E91 does here.** It certifies the channel (a Bell test plus the QBER of the key setting) and decides whether to accept it. It does not extract a secret key; reconciliation and privacy amplification are implemented in the BB84 pipeline. Earlier result files carried a `final_key_hex` field that was only a placeholder identifier, not key material; it has been removed.
+
+**Result files.** The experiments write to `results/` (or to `QUANTVAULT_RESULTS_DIR`), named with the full job ID. The test suite writes to a temporary folder, so running the tests never changes the committed results.
 
 ### 🚀 Advanced Quantum & Cryptographic Implementations
 
 QuantVault extends beyond toy textbook demonstrations into a complete, mathematically grounded migration platform:
 
 1. **Parallel BB84 Multi-Qubit Packing on 156-Qubit Heron Chip (`src/bb84_hardware.py`):**
-   - Packs parallel Alice/Bob pairs across 20–40 physical qubits per circuit to maximize throughput and minimize QPU execution time.
-   - Measures realistic device error rates on IBM's `FakeMarrakesh` (QBER = 3.62% vs Aer 0.00%), accurately testing post-processing under actual quantum processor thermal relaxation and readout cross-talk.
+   - Packs parallel Alice/Bob pairs into each circuit to cut the number of circuits and the run time.
+   - Measures the QBER under the `FakeMarrakesh` noise model, which includes gate errors, thermal relaxation and readout errors (QBER = 3.62% vs 0.00% on the ideal simulator). This is an emulation of IBM's chip, not a hardware run; pass `--backend ibm` to use a real device.
 2. **Beyond Intercept-Resend: Optimal Phase-Covariant Quantum Cloning (`src/cloning_and_decoy.py`):**
    - Implements the theoretical optimal $1 \to 2$ symmetric phase-covariant quantum cloning machine ($F = \frac{1}{2} + \frac{1}{\sqrt{8}} \approx 85.36\%$).
    - Induces an analytic QBER of $D = \frac{1 - 1/\sqrt{2}}{2} \approx 14.64\%$, demonstrating that even an attacker using the laws of quantum physics to clone equatorial states is caught by the 11.0% Shor-Preskill security bound.
@@ -168,19 +174,23 @@ QuantVault extends beyond toy textbook demonstrations into a complete, mathemati
 5. **Real-World Discovery: Active TLS Scanner & CycloneDX CBOM Import (`src/scanner.py`):**
    - Active TLS handshake inspector extracting cipher suites, key exchange algorithms, and certificates with built-in SSRF/allowlist protection.
    - Importers for CycloneDX Cryptographic Bill of Materials (CBOM v1.6) and SSLyze vulnerability scans to populate the risk inventory from real infrastructure.
-6. **Tri-Hybrid Key Derivation (`src/pqc.py`):**
-   - Combines classical Curve25519 (X25519), NIST FIPS 203 ML-KEM-768 (lattice post-quantum), and QKD quantum shared secrets via HKDF-SHA256.
-   - Guarantees unconditional forward secrecy if **any one** of classical hardness, lattice hardness, or quantum non-locality remains unbroken.
+6. **Tri-Hybrid Key Derivation and Live Channel (`src/pqc.py`, `src/channel.py`):**
+   - Combines X25519 (via `cryptography`), ML-KEM-768 (FIPS 203, via the pure-Python [`kyber-py`](https://pypi.org/project/kyber-py/) package) and a QKD secret with HKDF-SHA256. The key stays safe while at least one of the three holds. For the X25519 and ML-KEM parts that is a computational guarantee; only the QKD part is information-theoretic, under the QKD protocol's own assumptions.
+   - `kyber-py` is correct (FIPS 203 sizes, round-trip and tamper tests) but not constant-time or hardened, so it is a demonstration implementation; production systems should use liboqs or a vendor library.
+   - The live channel makes Alice and Bob derive the session key separately, encrypts a synthetic patient record with AES-256-GCM under Bob's key and decrypts it with Alice's, and fails loudly if the two keys differ. If the QBER exceeds 11% it aborts before any key is derived; if too few secret bits survive it stops with `INSUFFICIENT_KEY` rather than inventing a key. It accepts 256–8,192 qubits and never returns the key itself.
 7. **Quantitative QKD Feasibility & Relay Calculator (`src/qkd_calc.py`):**
    - Fiber attenuation model $\eta = 10^{-\alpha L / 10}$ calculating expected key rate vs distance.
    - Determines direct transmission feasibility (e.g., 40 km yields ~3.05 Mbit/s) and pinpoints when long-haul spans (>203 km) require trusted relay nodes or PQC fallback.
+8. **Executive Board Report (`src/report.py`):**
+   - Builds a Markdown report and a printable HTML report (prioritised inventory, Mosca outcomes, roadmap, PQC-vs-QKD spend, weight-sensitivity result) from the signed-in user's own inventory at the chosen horizon.
+   - In the dashboard, open the **Migration** tab and use **Download Report (.md)** or **Printable Report (.html)**. The server builds the report in memory and writes nothing to disk. From the command line, `python -m src.main report` also saves the files to `docs/`.
 
 ### 🛡️ Defensible Risk Scoring & Weight Sensitivity Analysis
 
 To eliminate the critique of "arbitrary risk weights" and artificial tier clamping:
-- **Transparent Dual Scoring:** Assets report their **raw mathematical risk score** $R = 100(0.35C + 0.25Q + 0.20E + 0.20M)$ alongside qualitative tier classifications (which flag Mosca violations and unknown cryptographic algorithms). No score is artificially clamped into a tier band.
+- **Transparent Dual Scoring:** Assets report their **raw mathematical risk score** $R = 100(0.35C + 0.25Q + 0.20E + 0.20M)$ alongside qualitative tier classifications (which flag Mosca violations and unknown cryptographic algorithms). The displayed score is never clamped into a tier band, so a tier set by a rule can sit outside the usual score range for that tier; the dashboard marks those rows.
 - **Monte Carlo Sensitivity Benchmark (1,000 trials):** We perturb each weight uniformly by $\pm 30\%$ and re-rank the entire hospital inventory across 1,000 independent samples:
-  - **Mean Kendall $\tau$ Rank Correlation:** **0.888** (95% CI: $[0.769, 0.974]$).
+  - **Mean Kendall $\tau$ Rank Correlation:** **0.888** (95% interval across the 1,000 trials: $[0.744, 1.000]$).
   - **Top-5 Asset Retention:** Top-5 priority systems maintain an **86.9% mean overlap** across all weight variations.
   - This mathematically proves the prioritisation order is **robust** against weight assumptions. Detailed metrics are recorded in [`results/weight_sensitivity_benchmark.json`](results/weight_sensitivity_benchmark.json).
 
@@ -191,11 +201,12 @@ To eliminate the critique of "arbitrary risk weights" and artificial tier clampi
 | Language | Python 3.11+ |
 | Quantum SDK | Qiskit `1.4.6`, Qiskit Aer `0.18.0`, Qiskit IBM Runtime `0.44.1` |
 | Statistics | NumPy `2.5.4` / SciPy `1.18.1` (Clopper–Pearson bound, Toeplitz hashing, Kendall $\tau$) |
-| Simulation & Hardware | AerSimulator, 156-qubit `FakeMarrakesh` IBM Heron chip model, IBM Quantum Platform |
+| Simulation & Backends | AerSimulator, `FakeMarrakesh` noise model of IBM's 156-qubit Heron chip, optional IBM Quantum Platform backend |
+| Cryptography | `cryptography` (X25519, HKDF, AES-GCM), `kyber-py` 1.2.0 (ML-KEM-768) |
 | Analytics | pandas `3.0.6`, Matplotlib `3.11.2` |
 | Web app (MERN) | MongoDB (Mongoose), Express, React 19 (Vite), Tailwind CSS 4 with a dark liquid-glass design system, Recharts, Node.js 22+ |
 | Static dashboard | Self-contained HTML/JavaScript generated by Python (no extra dependencies) |
-| Testing | pytest `9.1.1` (95 automated unit, property, and statistical tests) |
+| Testing | pytest `9.1.1` (122 Python unit, property and statistical tests), Node's test runner (97 API tests), Vitest (20 client tests) |
 | Environment | JupyterLab / VS Code, `venv` |
 | Version control | Git + GitHub |
 
@@ -435,7 +446,7 @@ git pull --rebase       # update your branch on top of main
 - [x] Code pushed to `main` and all 95 tests pass
 - [x] Notebooks committed with **cleared outputs** (or use `nbstrip`)
 - [x] `README` includes a demo screenshot / video link
-- [x] Hardware / FakeMarrakesh Bell test results verified and committed to `results/`
+- [x] Aer and `FakeMarrakesh` (noise-model emulation) Bell test results committed to `results/`
 - [x] Short project summary submitted on the hackathon portal
 
 ---

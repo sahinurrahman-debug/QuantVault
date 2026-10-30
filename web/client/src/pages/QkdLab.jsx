@@ -237,12 +237,13 @@ function LiveChannelCard() {
     }
   };
 
-  const isAborted = res?.status === 'ABORTED';
+  const transmitted = res?.status === 'TRANSMITTED';
+  const insufficient = res?.status === 'INSUFFICIENT_KEY';
 
   return (
     <Card
       title="Live Quantum-Safe Healthcare Channel (PQC + QKD Tri-Hybrid)"
-      lead="Demonstrates 'QKD supplements PQC, doesn't replace it': Encrypts Eleanor Vance's Electronic Health Record with AES-256-GCM under a tri-hybrid key (X25519 + ML-KEM-768 + QKD)."
+      lead="Demonstrates 'QKD supplements PQC, doesn't replace it': Encrypts a synthetic patient record with AES-256-GCM under a tri-hybrid key (X25519 + ML-KEM-768 + QKD). Both ends derive the key separately."
     >
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
         <b>Eavesdropper Interception (Spy):</b>
@@ -279,13 +280,18 @@ function LiveChannelCard() {
 
       {res && (
         <div style={{ marginTop: 12 }}>
-          {isAborted ? (
+          {!transmitted && insufficient ? (
+            <div style={{ borderLeft: '4px solid #f59e0b', background: 'rgba(245, 158, 11, 0.1)', padding: 14, borderRadius: 8 }}>
+              <b style={{ color: '#f59e0b', fontSize: 16 }}>NOT ENOUGH SECRET KEY (NOTHING SENT)</b>
+              <p style={{ margin: '6px 0', fontSize: 14 }}>{res.qkd.abort_reason}</p>
+            </div>
+          ) : !transmitted ? (
             <div style={{ borderLeft: '4px solid #ef4444', background: 'rgba(239, 68, 68, 0.1)', padding: 14, borderRadius: 8 }}>
               <b style={{ color: '#ef4444', fontSize: 16 }}>🚨 HARD SECURITY BARRIER ENFORCED (TRANSMISSION ABORTED)</b>
               <p style={{ margin: '6px 0', fontSize: 14 }}>
                 Observed QBER of <b>{(res.qkd.qber_observed * 100).toFixed(2)}%</b> exceeded the 11.00% security bound.
-                Quantum no-cloning disturbance detected an eavesdropper on the optical link.
-                Key derivation was halted immediately.
+                The disturbance is what an eavesdropper's measurements look like on this link.
+                Key derivation was halted, so nothing was encrypted or sent.
               </p>
               <div style={{ display: 'flex', gap: 18, marginTop: 8, fontSize: 13 }}>
                 <span><b>Plaintext Leaked:</b> <code style={{ color: '#ef4444', background: '#fff', padding: '2px 6px', borderRadius: 4 }}>0 BYTES</code></span>
@@ -297,7 +303,7 @@ function LiveChannelCard() {
               <b style={{ color: '#10b981', fontSize: 16 }}>🛡️ SECURE ENCRYPTED TRANSMISSION VERIFIED</b>
               <p style={{ margin: '6px 0', fontSize: 14 }}>
                 Quantum link verified clean (QBER {(res.qkd.qber_observed * 100).toFixed(2)}% &lt; 11.00%).
-                Derived 256-bit AES-GCM session key binding Curve25519, NIST FIPS 203 ML-KEM-768, and QKD secret.
+                Alice and Bob each derived the same 256-bit AES-GCM key from Curve25519, ML-KEM-768 and the QKD secret (fingerprint <code>{res.pqc.session_key_fingerprint}</code>).
               </p>
               <div style={{ fontSize: 13, marginTop: 8 }}>
                 <div><b>AES-GCM Nonce:</b> <code>{res.payload.nonce_hex}</code></div>

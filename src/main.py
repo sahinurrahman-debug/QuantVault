@@ -19,6 +19,7 @@ Full suite of post-quantum risk, hardware QKD, and cryptographic tools:
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -53,6 +54,12 @@ def cmd_risk(args) -> None:
         print(f"  Mean Kendall tau rank correlation: {sens['mean_kendall_tau']:.3f} (95% CI: [{sens['ci_95_tau'][0]:.3f}, {sens['ci_95_tau'][1]:.3f}])")
         print(f"  Top-5 asset retention rate:        {sens['top5_exact_match_rate']:.1%} (mean top-5 overlap {sens['mean_top5_overlap_pct']:.1f}%)")
         print(f"  Ranking robustness verdict:        {'ROBUST (ranking does not depend on arbitrary weights)' if sens['robust'] else 'SENSITIVE'}")
+        from .e91 import results_dir
+
+        out = results_dir() / "weight_sensitivity_benchmark.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(sens, indent=2), encoding="utf-8")
+        print(f"  Saved to {out}")
 
 
 def cmd_qkd(args) -> None:
@@ -83,7 +90,7 @@ def cmd_bb84_hw(args) -> None:
         backend_name=args.backend,
     )
     r = run_hardware_bb84(cfg)
-    print(f"\nBB84 Multi-Qubit Parallel Packing on Hardware")
+    print("\nBB84 Multi-Qubit Parallel Packing on Hardware")
     print(f"  Backend:             {r.backend}")
     print(f"  Job ID:              {r.job_id}")
     print(f"  Pairs/circuit:       {r.pairs_per_circuit} (Parallel width: {r.pairs_per_circuit * 2} qubits)")
@@ -116,15 +123,15 @@ def cmd_e91(args) -> None:
         print(f"    {name:<8} theta_A={s['theta_a']:.2f}, theta_B={s['theta_b']:+.2f} -> E = {s['e_val']:+.4f} (std err {s['std_err']:.4f})")
     print(f"\n  Bell parameter S:  {r.s_value:.4f}  (std err {r.s_std_err:.4f})")
     print(f"  95% Conf. Int.:    [{r.ci_95[0]:.4f}, {r.ci_95[1]:.4f}]")
-    print(f"  Classical limit:   |S| <= 2.0000 (Local Hidden Variable theories)")
-    print(f"  Tsirelson bound:   S <= 2.8284 (Quantum maximum: 2*sqrt(2))")
+    print("  Classical limit:   |S| <= 2.0000 (Local Hidden Variable theories)")
+    print("  Tsirelson bound:   S <= 2.8284 (Quantum maximum: 2*sqrt(2))")
     print(f"  Significance:      {r.sigma_above_classical:+.1f} sigma above classical bound")
-    print(f"\n  Matching Key Basis (A0=0, B0=0):")
+    print("\n  Matching Key Basis (A0=0, B0=0):")
     print(f"    Shots:           {r.key_shots:,}")
     print(f"    QBER:            {r.qber_key:.2%}")
     print(f"\n  Verdict:           {r.verdict}")
     if r.key_accepted:
-        print(f"  Final Shared Key:  {r.final_key_hex}")
+        print("  Secret key:        not extracted (E91 certifies the channel; the BB84 pipeline distils keys)")
 
 
 def cmd_clone(args) -> None:
@@ -161,7 +168,7 @@ def cmd_pqc(args) -> None:
     from .pqc import execute_full_hybrid_exchange
 
     res = execute_full_hybrid_exchange(args.qkd_key)
-    print(f"\nHybrid Post-Quantum Cryptography & QKD Session Key Derivation")
+    print("\nHybrid Post-Quantum Cryptography & QKD Session Key Derivation")
     print(f"  X25519 Secret (ECDH):      {res.x25519_shared_secret_hex[:16]}... ({len(res.x25519_shared_secret_hex)//2} bytes)")
     print(f"  ML-KEM-768 Secret (FIPS):  {res.mlkem_shared_secret_hex[:16]}... ({len(res.mlkem_shared_secret_hex)//2} bytes)")
     print(f"  QKD Shared Secret:         {res.qkd_shared_secret_hex[:16]}... ({len(res.qkd_shared_secret_hex)//2} bytes)")
@@ -238,7 +245,7 @@ def cmd_report(args) -> None:
 
     cfg = RiskConfig(threat_horizon_years=args.horizon)
     res = generate_board_report(cfg=cfg, output_md_path=args.output, output_html_path=args.html)
-    print(f"\nQuantVault Executive Board Migration Plan Generated:")
+    print("\nQuantVault Executive Board Migration Plan Generated:")
     print(f"  Target Assets:       {res['total_assets']} systems evaluated")
     print(f"  Mosca Violations:    {res['mosca_violated']} systems expired under Z={args.horizon:.0f}y")
     print(f"  Urgent Reviews:      {res['urgent_review']} Critical/High priority systems")

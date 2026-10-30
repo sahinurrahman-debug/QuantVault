@@ -136,10 +136,10 @@ def cmd_experiments(req: dict) -> dict:
 def cmd_channel(req: dict) -> dict:
     from .channel import run_quantum_safe_channel
 
-    spy = bool(req.get("spy", False))
-    qubits = int(req.get("qubits", 2048))
-    record = req.get("record", None)
-    return run_quantum_safe_channel(spy=spy, qkd_qubits=qubits, record=record)
+    qubits = req.get("qubits", 2048)
+    if isinstance(qubits, bool) or not isinstance(qubits, int):
+        raise ValueError("qubits must be a whole number")
+    return run_quantum_safe_channel(spy=bool(req.get("spy", False)), qkd_qubits=qubits, record=req.get("record") or None)
 
 
 def cmd_report(req: dict) -> dict:
@@ -147,8 +147,10 @@ def cmd_report(req: dict) -> dict:
 
     cfg = _config(req)
     assets = req.get("assets")
-    inv = {"assets": assets} if assets else None
-    return generate_board_report(inventory=inv, cfg=cfg)
+    if assets is not None and not assets:
+        raise ValueError("The inventory is empty; there is nothing to report on")
+    inv = {"assets": assets} if assets is not None else None
+    return generate_board_report(inventory=inv, cfg=cfg, write_files=False)
 
 
 COMMANDS = {

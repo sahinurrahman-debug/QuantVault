@@ -95,6 +95,21 @@ export function validateQkd(body) {
   return { value, errors };
 }
 
+/** Live channel: whether Eve listens, how many qubits to send, and an optional small record to encrypt. */
+export function validateChannel(body) {
+  const errors = [];
+  if (!isObj(body)) return { value: null, errors: ['body must be a JSON object'] };
+  const value = { spy: body.spy ?? false, qubits: body.qubits ?? 2048, record: null };
+  if (typeof value.spy !== 'boolean') errors.push('spy must be a boolean');
+  if (!Number.isInteger(value.qubits) || value.qubits < 256 || value.qubits > 8192) errors.push('qubits must be an integer between 256 and 8192');
+  if (body.record !== undefined && body.record !== null) {
+    if (!isObj(body.record)) errors.push('record must be a JSON object');
+    else if (JSON.stringify(body.record).length > 4096) errors.push('record must be at most 4096 characters of JSON');
+    else value.record = body.record;
+  }
+  return { value, errors };
+}
+
 export function validateExperiment(body) {
   const errors = [];
   const value = { n_qubits: body?.n_qubits ?? 2048, reps: body?.reps ?? 3 };

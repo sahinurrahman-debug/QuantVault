@@ -21,7 +21,13 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from .postprocessing import binary_entropy
+
+
+def _binary_entropy(x: float) -> float:
+    """Binary entropy in bits, kept local to avoid loading the QKD simulator."""
+    if x <= 0.0 or x >= 1.0:
+        return 0.0
+    return -x * math.log2(x) - (1 - x) * math.log2(1 - x)
 
 
 @dataclass
@@ -91,7 +97,7 @@ def calculate_qkd_rate(params: QKDLinkParameters, distance_km: float) -> tuple[f
     e1 = min(0.5, max(0.0, e1_num / (y1 * nu))) if (y1 * nu) > 0 else 0.5
 
     q1 = y1 * mu * math.exp(-mu)
-    r_pulse = 0.5 * max(0.0, q1 * (1.0 - binary_entropy(e1)) - params.f_ec * q_mu * binary_entropy(e_mu))
+    r_pulse = 0.5 * max(0.0, q1 * (1.0 - _binary_entropy(e1)) - params.f_ec * q_mu * _binary_entropy(e_mu))
     skr_bps = params.rep_rate_hz * r_pulse
 
     return skr_bps, e_mu

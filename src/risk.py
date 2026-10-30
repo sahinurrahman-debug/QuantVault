@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -120,6 +121,19 @@ def _is_vulnerable_or_unknown(mech: dict) -> str | None:
     return None
 
 
+@lru_cache(maxsize=8)
+def _mosca_samples(n_trials: int, seed: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Draw the fixed Monte Carlo samples once; only X and Y scale per asset."""
+    rng = np.random.default_rng(seed)
+    z_samples = rng.weibull(2.5, size=n_trials) * 16.5
+    x_factors = rng.triangular(0.85, 1.0, 1.25, size=n_trials)
+    y_factors = rng.triangular(0.85, 1.0, 1.40, size=n_trials)
+    for samples in (z_samples, x_factors, y_factors):
+        samples.flags.writeable = False
+    return z_samples, x_factors, y_factors
+
+
+@lru_cache(maxsize=4096)
 def _probabilistic_mosca(
     x: float,
     y: float,
@@ -140,12 +154,8 @@ def _probabilistic_mosca(
     if verdict is None or x <= 0:
         return {"status": "not_applicable", "p_violation": 0.0, "x": x, "y": y}
 
-    rng = np.random.default_rng(seed)
-    z_samples = rng.weibull(2.5, size=n_trials) * 16.5
-    x_samples = rng.triangular(0.85 * x, x, 1.25 * x, size=n_trials) if x > 0 else np.zeros(n_trials)
-    y_samples = rng.triangular(0.85 * y, y, 1.40 * y, size=n_trials) if y > 0 else np.zeros(n_trials)
-
-    violations = (x_samples + y_samples) > z_samples
+    z_samples, x_factors, y_factors = _mosca_samples(n_trials, seed)
+    violations = (x * x_factors + y * y_factors) > z_samples
     p_violation = float(np.mean(violations))
 
     status = "violated" if p_violation > 0.50 else "ok"
@@ -155,8 +165,8 @@ def _probabilistic_mosca(
     return {
         "status": status,
         "p_violation": round(p_violation, 3),
-        "x_mean": round(float(np.mean(x_samples)), 1),
-        "y_mean": round(float(np.mean(y_samples)), 1),
+        "x_mean": round(float(x * np.mean(x_factors)), 1),
+        "y_mean": round(float(y * np.mean(y_factors)), 1),
         "z_median": round(float(np.median(z_samples)), 1),
     }
 
